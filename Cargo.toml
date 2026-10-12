@@ -13,11 +13,18 @@ categories = ["gui"]
 # Elm-style MVU framework on top of GTK4.
 relm4 = "0.11"
 # GTK4 itself (kept as a direct dependency so `gtk::` paths resolve in macros).
-gtk = { package = "gtk4", version = "0.11" }
+# `v4_8` unlocks `GtkPicture::set_content_fit`, used to cover-fit wallpapers.
+gtk = { package = "gtk4", version = "0.11", features = ["v4_8"] }
 # Turns a GTK4 window into a Wayland layer surface (a bar/panel).
 gtk4-layer-shell = { version = "0.8", features = ["v1_3"] }
 # Direct access to Mango's IPC socket. We only need the blocking API.
 mango-ipc = { version = "0.6", default-features = false, features = ["blocking"] }
+# Toggle the launcher from a Mango keybind: `pkill -SIGUSR1 mango-shell`.
+signal-hook = "0.3"
+# Hosts the system tray (StatusNotifierItem) and its DBusMenu on the session bus.
+system-tray = "0.8"
+# Async runtime the tray host runs on (system-tray is Tokio-based).
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 
 [profile.release]
 lto = "thin"

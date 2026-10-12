@@ -76,19 +76,23 @@ impl TagsModel {
         }
 
         for tag in &self.tags {
-            let label = if tag.count > 0 {
-                format!("{}·{}", tag.index, tag.count)
-            } else {
-                tag.index.to_string()
-            };
-
-            let button = gtk::Button::with_label(&label);
-            if tag.active {
-                button.add_css_class("active");
+            // Like end4's workspaces: the number is always shown, occupancy is
+            // a subtle pill behind it and the active tag is a filled pill.
+            let button = gtk::Button::with_label(&tag.index.to_string());
+            button.add_css_class("mango-tag");
+            if tag.count > 0 {
+                button.add_css_class("occupied");
             }
             if tag.urgent {
                 button.add_css_class("urgent");
             }
+            if tag.active {
+                button.add_css_class("active");
+            }
+            button.set_tooltip_text(Some(&format!(
+                "Tag {} ({} window(s))",
+                tag.index, tag.count
+            )));
 
             let index = tag.index;
             let sender = sender.clone();

@@ -1,49 +1,466 @@
-/* Loaded with relm4::set_global_css(include_str!("style.css")). */
+/* Loaded with relm4::set_global_css(include_str!("style.css")).
+ *
+ * Material 3 / Material You look, modelled on pctrade/end4-pC
+ * (the illogical-impulse Quickshell). The bar is a "hug" layout: a full-width
+ * translucent surface that owns rounded bottom corners, with each widget
+ * cluster sitting in its own pill (`layer 1` over `layer 0`) and rounded to
+ * its full height.
+ *
+ * Want it tinted like your wallpaper (end4 generates its palette with
+ * matugen)? Drop a file at ~/.config/mango-shell/style.css and redefine the
+ * tokens below — it is appended after this stylesheet, so it wins.
+ */
+
+/* --- Material 3 design tokens (dark) ---------------------------------- */
+/* Defaults are a warm Material You scheme, matching the Mango config's own
+ * `root_color` / `focus_color`. Redefine these in
+ * ~/.config/mango-shell/style.css to tint the shell to your wallpaper. */
+/* Surfaces. */
+@define-color layer0            rgba(32, 27, 20, 0.85);
+@define-color layer1            rgba(50, 44, 35, 0.72);
+@define-color layer2            rgba(58, 51, 41, 0.96);
+@define-color layer0_border     rgba(90, 81, 66, 0.55);
+
+/* Content. */
+@define-color on_surface          #ece4d6;
+@define-color on_surface_variant  #d0c6b4;
+@define-color outline             #968c7a;
+@define-color outline_variant     #4c4538;
+
+/* Accents. */
+@define-color primary             #c9b890;
+@define-color on_primary          #3a2f17;
+@define-color primary_container   #4a3f27;
+@define-color on_primary_container #ecd9b5;
+@define-color secondary_container #4a4436;
+@define-color on_secondary_container #ece3d0;
+@define-color tertiary_container  #3b3226;
+@define-color on_tertiary_container #cdc2ad;
+
+/* Feedback. */
+@define-color error               #ffb4ab;
+@define-color on_error            #690005;
+@define-color error_container     #93000a;
+@define-color on_error_container  #ffdad6;
+
+@define-color scrim               rgba(0, 0, 0, 0.45);
+
+/* --- Base shapes ------------------------------------------------------ */
 
 window.mango-bar {
-    background-color: rgba(17, 17, 27, 0.86);
-    color: #cdd6f4;
-    font-family: "JetBrainsMono Nerd Font", monospace;
+    background-color: transparent;
+    background-image: none;
+    color: @on_surface;
+    font-family: "Google Sans Flex", "Rubik", "Inter", "Cantarell", sans-serif;
+    font-size: 15px;
+    min-height: 40px;
+}
+
+/* The full-width bar surface. Rounded bottom corners are the "hug" look. */
+.mango-bar-surface {
+    background-color: @layer0;
+    min-height: 40px;
+    border: 1px solid @layer0_border;
+    border-top: none;
+    border-radius: 0;
+    border-bottom-left-radius: 23px;
+    border-bottom-right-radius: 23px;
+}
+
+/* A rounded cluster of widgets: one pill per group. */
+.mango-group {
+    background-color: @layer1;
+    border-radius: 9999px;
+    padding: 0 5px;
+    min-height: 32px;
+}
+
+/* --- Buttons ---------------------------------------------------------- */
+
+window.mango-bar button {
+    background-image: none;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    outline: none;
+    color: @on_surface_variant;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+/* Workspace / tag buttons. */
+window.mango-bar button.mango-tag {
+    min-width: 26px;
+    min-height: 26px;
+    padding: 0;
+    margin: 3px 1px;
+    border-radius: 9999px;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+window.mango-bar button.mango-tag:hover {
+    background-color: alpha(@on_surface, 0.08);
+}
+
+/* Occupied tags: the subtle "you have windows here" pill. */
+window.mango-bar button.mango-tag.occupied {
+    background-color: alpha(@secondary_container, 0.6);
+    color: @on_secondary_container;
+}
+
+/* Active tag: a filled pill, like the M3 workspaces indicator. */
+window.mango-bar button.mango-tag.active {
+    background-color: @primary;
+    color: @on_primary;
+    font-weight: 600;
+}
+
+window.mango-bar button.mango-tag.urgent {
+    background-color: @error_container;
+    color: @on_error_container;
+}
+
+/* The round launcher button in the corner. */
+window.mango-bar button.mango-icon-button {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 9999px;
+    background-color: @layer1;
+    -gtk-icon-size: 17px;
+}
+
+window.mango-bar button.mango-icon-button:hover {
+    background-color: alpha(@on_surface, 0.12);
+    color: @on_surface;
+}
+
+window.mango-bar button.mango-icon-button:active {
+    background-color: alpha(@on_surface, 0.16);
+}
+
+/* --- Clock ------------------------------------------------------------ */
+
+.mango-clock {
+    padding: 0 4px;
+}
+
+.mango-clock-time {
+    color: @on_surface;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+}
+
+.mango-clock-date {
+    color: @on_surface_variant;
     font-size: 13px;
-    border-bottom: 1px solid rgba(137, 180, 250, 0.25);
 }
 
-window.mango-bar label {
-    color: #cdd6f4;
+.mango-clock-sep {
+    color: @outline;
+    font-size: 13px;
 }
 
-.mango-title {
-    font-weight: bold;
-    letter-spacing: 1px;
+/* --- Right-hand status cluster --------------------------------------- */
+
+.mango-status {
+    padding: 0 8px;
+    color: @on_surface_variant;
+    font-size: 13px;
+    letter-spacing: 0.3px;
 }
 
 .mango-dim {
-    color: #7f849c;
+    color: @outline;
 }
 
-window.mango-bar button {
+/* --- System indicators (Wi-Fi, volume, brightness) ------------------- */
+
+.mango-system,
+.mango-tray {
+    padding: 0 3px;
+}
+
+/* Icon + value pill shared by the system indicators. */
+window.mango-bar .mango-widget {
+    min-height: 28px;
+    padding: 0 8px;
+    margin: 2px 1px;
+    border-radius: 9999px;
+    color: @on_surface_variant;
+    -gtk-icon-size: 16px;
+}
+
+window.mango-bar button.mango-widget:hover {
+    background-color: alpha(@on_surface, 0.08);
+    color: @on_surface;
+}
+
+window.mango-bar button.mango-widget:active {
+    background-color: alpha(@on_surface, 0.14);
+}
+
+/* Read-only indicators (Wi-Fi) keep a flat look. */
+window.mango-bar .mango-widget-static {
+    color: @on_surface_variant;
+}
+
+.mango-widget-icon {
+    color: inherit;
+}
+
+.mango-widget-label {
+    font-size: 13px;
+    font-weight: 500;
+    min-width: 30px;
+}
+
+/* --- System tray ------------------------------------------------------ */
+
+window.mango-bar button.mango-tray-item {
+    min-width: 26px;
+    min-height: 26px;
+    padding: 0;
+    margin: 2px 1px;
+    border-radius: 9999px;
+    color: @on_surface;
+    -gtk-icon-size: 16px;
+}
+
+window.mango-bar button.mango-tray-item:hover {
+    background-color: alpha(@on_surface, 0.10);
+}
+
+/* Items that asked for attention get the error accent. */
+window.mango-bar button.mango-tray-item.attention {
+    background-color: @error_container;
+    color: @on_error_container;
+}
+
+/* --- Tray context menu (DBusMenu) ------------------------------------- */
+
+popover.mango-menu-popover > contents {
+    background-color: @layer2;
+    border: 1px solid @layer0_border;
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.mango-menu {
     background: transparent;
+}
+
+button.mango-menu-item {
     background-image: none;
+    background-color: transparent;
     border: none;
     box-shadow: none;
-    min-width: 22px;
-    min-height: 20px;
-    padding: 2px 6px;
-    border-radius: 6px;
-    color: #7f849c;
+    border-radius: 8px;
+    padding: 5px 8px;
+    min-height: 0;
+    color: @on_surface;
+    font-size: 14px;
 }
 
-window.mango-bar button:hover {
-    background-color: rgba(205, 214, 244, 0.10);
+button.mango-menu-item:hover {
+    background-color: alpha(@on_surface, 0.08);
 }
 
-window.mango-bar button.active {
-    background-color: rgba(137, 180, 250, 0.30);
-    color: #1e1e2e;
-    font-weight: bold;
+button.mango-menu-item:disabled {
+    color: @outline;
 }
 
-window.mango-bar button.urgent {
-    background-color: rgba(243, 139, 168, 0.40);
-    color: #1e1e2e;
+.mango-menu-separator {
+    background-color: @outline_variant;
+    min-height: 1px;
+    margin: 4px 6px;
+}
+
+/* --- Wallpaper -------------------------------------------------------- */
+
+/* The self-drawn desktop background (one surface per monitor, Background
+ * layer). The image itself is a GtkPicture fitted to cover; this just keeps
+ * the window chrome out of the way. */
+window.mango-wallpaper {
+    background-color: transparent;
+    background-image: none;
+}
+
+/* --- Wallpaper picker (Overlay layer, full-screen scrim) -------------- */
+
+window.mango-picker {
+    background-color: @scrim;
+    background-image: none;
+    font-family: "Google Sans Flex", "Rubik", "Inter", "Cantarell", sans-serif;
+    font-size: 15px;
+}
+
+.mango-picker-panel {
+    background-color: @layer2;
+    border: 1px solid @layer0_border;
+    border-radius: 23px;
+    padding: 14px;
+    min-width: 980px;
+}
+
+window.mango-picker entry {
+    background-image: none;
+    background-color: alpha(@on_surface, 0.06);
+    color: @on_surface;
+    border: 1px solid @outline_variant;
+    border-radius: 9999px;
+    padding: 10px 16px;
+    min-height: 24px;
+    caret-color: @primary;
+    box-shadow: none;
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+window.mango-picker entry:focus {
+    border-color: @primary;
+    background-color: alpha(@on_surface, 0.09);
+}
+
+window.mango-picker entry > text > placeholder {
+    color: @outline;
+}
+
+.mango-picker-status {
+    padding: 0 4px;
+    color: @on_surface_variant;
+    font-size: 13px;
+}
+
+window.mango-picker scrolledwindow {
+    background: transparent;
+}
+
+flowbox.mango-picker-grid {
+    background: transparent;
+}
+
+flowboxchild.mango-picker-tile {
+    padding: 6px;
+    border-radius: 18px;
+    background-color: transparent;
+    transition: background-color 120ms ease;
+}
+
+flowboxchild.mango-picker-tile:hover {
+    background-color: alpha(@on_surface, 0.08);
+}
+
+flowboxchild.mango-picker-tile:selected {
+    background-color: @secondary_container;
+}
+
+/* The wallpaper that is currently shown. */
+flowboxchild.mango-picker-tile.current {
+    background-color: @primary_container;
+}
+
+flowboxchild.mango-picker-tile picture {
+    border-radius: 12px;
+    background-color: alpha(@on_surface, 0.06);
+}
+
+.mango-picker-name {
+    color: @on_surface_variant;
+    font-size: 12px;
+}
+
+/* Scrollbar. */
+window.mango-picker scrollbar {
+    background: transparent;
+}
+
+window.mango-picker scrollbar slider {
+    background-color: alpha(@on_surface, 0.22);
+    border-radius: 9999px;
+    min-width: 6px;
+    min-height: 6px;
+    margin: 2px;
+}
+
+/* --- Application launcher (Overlay layer, full-screen scrim) ---------- */
+
+/* The full-screen dimmed backdrop behind the search panel. */
+window.mango-launcher {
+    background-color: @scrim;
+    background-image: none;
+    font-family: "Google Sans Flex", "Rubik", "Inter", "Cantarell", sans-serif;
+    font-size: 15px;
+}
+
+.mango-launcher-panel {
+    background-color: @layer2;
+    border: 1px solid @layer0_border;
+    border-radius: 23px;
+    padding: 12px;
+    min-width: 520px;
+}
+
+window.mango-launcher entry {
+    background-image: none;
+    background-color: alpha(@on_surface, 0.06);
+    color: @on_surface;
+    border: 1px solid @outline_variant;
+    border-radius: 9999px;
+    padding: 10px 16px;
+    min-height: 24px;
+    caret-color: @primary;
+    box-shadow: none;
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+window.mango-launcher entry:focus {
+    border-color: @primary;
+    background-color: alpha(@on_surface, 0.09);
+}
+
+window.mango-launcher entry > text > placeholder {
+    color: @outline;
+}
+
+window.mango-launcher scrolledwindow {
+    background: transparent;
+}
+
+window.mango-launcher list {
+    background: transparent;
+}
+
+window.mango-launcher row {
+    padding: 8px 12px;
+    margin: 1px 0;
+    border-radius: 14px;
+    color: @on_surface;
+    transition: background-color 120ms ease;
+}
+
+window.mango-launcher row:hover {
+    background-color: alpha(@on_surface, 0.06);
+}
+
+window.mango-launcher row:selected {
+    background-color: @secondary_container;
+}
+
+window.mango-launcher row:selected label {
+    color: @on_secondary_container;
+    font-weight: 600;
+}
+
+/* Scrollbar. */
+window.mango-launcher scrollbar {
+    background: transparent;
+}
+
+window.mango-launcher scrollbar slider {
+    background-color: alpha(@on_surface, 0.22);
+    border-radius: 9999px;
+    min-width: 6px;
+    min-height: 6px;
+    margin: 2px;
 }

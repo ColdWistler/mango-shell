@@ -28,16 +28,23 @@ impl SimpleComponent for ClockModel {
         gtk::Box {
             set_orientation: gtk::Orientation::Horizontal,
             set_spacing: 6,
+            set_css_classes: &["mango-clock"],
 
             gtk::Label {
                 #[watch]
                 set_label: &model.date,
-                set_css_classes: &["mango-dim"],
+                set_css_classes: &["mango-clock-date"],
+            },
+
+            gtk::Label {
+                set_label: "•",
+                set_css_classes: &["mango-clock-sep"],
             },
 
             gtk::Label {
                 #[watch]
                 set_label: &model.time,
+                set_css_classes: &["mango-clock-time"],
             },
         }
     }
@@ -49,7 +56,7 @@ impl SimpleComponent for ClockModel {
     ) -> ComponentParts<Self> {
         let mut model = ClockModel {
             time: now("%H:%M"),
-            date: now("%a %d %b"),
+            date: now("%a, %d/%m"),
             timer: None,
         };
 
@@ -67,7 +74,7 @@ impl SimpleComponent for ClockModel {
         match msg {
             ClockInput::Tick => {
                 self.time = now("%H:%M");
-                self.date = now("%a %d %b");
+                self.date = now("%a, %d/%m");
             }
         }
     }
