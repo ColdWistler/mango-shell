@@ -1,0 +1,24 @@
+[package]
+name = "mango-shell"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+description = "A Wayland desktop shell (bar) for the Mango compositor, built with Rust, Relm4 and GTK4."
+license = "MIT"
+keywords = ["wayland", "mango", "relm4", "gtk4", "statusbar"]
+categories = ["gui"]
+# repository = "https://github.com/<your-username>/mango-shell"
+
+[dependencies]
+# Elm-style MVU framework on top of GTK4.
+relm4 = "0.11"
+# GTK4 itself (kept as a direct dependency so `gtk::` paths resolve in macros).
+gtk = { package = "gtk4", version = "0.11" }
+# Turns a GTK4 window into a Wayland layer surface (a bar/panel).
+gtk4-layer-shell = { version = "0.8", features = ["v1_3"] }
+# Direct access to Mango's IPC socket. We only need the blocking API.
+mango-ipc = { version = "0.6", default-features = false, features = ["blocking"] }
+
+[profile.release]
+lto = "thin"
+strip = true

@@ -1,0 +1,49 @@
+/* Loaded with relm4::set_global_css(include_str!("style.css")). */
+
+window.mango-bar {
+    background-color: rgba(17, 17, 27, 0.86);
+    color: #cdd6f4;
+    font-family: "JetBrainsMono Nerd Font", monospace;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(137, 180, 250, 0.25);
+}
+
+window.mango-bar label {
+    color: #cdd6f4;
+}
+
+.mango-title {
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.mango-dim {
+    color: #7f849c;
+}
+
+window.mango-bar button {
+    background: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    min-width: 22px;
+    min-height: 20px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    color: #7f849c;
+}
+
+window.mango-bar button:hover {
+    background-color: rgba(205, 214, 244, 0.10);
+}
+
+window.mango-bar button.active {
+    background-color: rgba(137, 180, 250, 0.30);
+    color: #1e1e2e;
+    font-weight: bold;
+}
+
+window.mango-bar button.urgent {
+    background-color: rgba(243, 139, 168, 0.40);
+    color: #1e1e2e;
+}
