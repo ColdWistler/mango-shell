@@ -10,10 +10,12 @@
 //!   |     +-- TagsModel      (widgets/)    clickable tag buttons
 //!   |     +-- ClockModel     (widgets/)    clock + date
 //!   +-- WallpaperModel       (wallpaper.rs) one background surface per monitor
-//!   +-- LauncherModel        (launcher.rs) centred overlay app launcher,
-//!   |                                      toggled with SIGUSR1
-//!   +-- WallpaperPickerModel (wallpaper.rs) centred overlay wallpaper grid,
-//!                                          toggled with SIGUSR2
+//!   +-- LauncherModel        (launcher.rs)  app launcher, hopped out of the bar
+//!   |         + flyout.rs                   with a slide-down panel (SIGUSR1)
+//!   +-- WallpaperPickerModel (wallpaper.rs) wallpaper grid, same fly-out panel
+//!                                          (SIGUSR2)
+//!   +-- ThemePickerModel     (theme.rs)     theme gallery, same fly-out panel,
+//!                                          opened from the bar's theme menu
 //! ```
 //!
 //! Why the invisible root? A GTK application needs a window to stay alive, and
@@ -21,8 +23,10 @@
 //! one surface. OkShell solves this exactly the same way.
 
 mod bar;
+mod flyout;
 mod launcher;
 mod mango;
+mod theme;
 mod wallpaper;
 mod widgets;
 
@@ -35,6 +39,7 @@ use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use launcher::{LauncherInput, LauncherModel};
 use relm4::prelude::*;
+use theme::{ThemeOutput, ThemePickerInput, ThemePickerModel};
 use wallpaper::{
     WallpaperInit, WallpaperInput, WallpaperModel, WallpaperOutput, WallpaperPickerInput,
     WallpaperPickerModel,
@@ -43,15 +48,20 @@ use wallpaper::{
 use mango::TagView;
 
 /// The shell owns one bar and one wallpaper surface per monitor, the app
-/// launcher, the wallpaper picker, and coordinates the IPC feed.
+/// launcher, the wallpaper picker, the theme gallery, and coordinates the IPC
+/// feed.
 struct Shell {
     bars: HashMap<String, Controller<BarModel>>,
     wallpapers: HashMap<String, Controller<WallpaperModel>>,
     launcher: Controller<LauncherModel>,
     picker: Controller<WallpaperPickerModel>,
+    /// The gallery you can open from the bar's theme menu.
+    theme_picker: Controller<ThemePickerModel>,
     /// The wallpaper currently shown, restored from disk at startup.
     current: Option<PathBuf>,
-    /// The global stylesheet, kept so a wallpaper change can reload it.
+    /// The active theme, restored from disk at startup.
+    theme: &'static theme::Theme,
+    /// The global stylesheet, kept so the theme can be reloaded in place.
     css: gtk::CssProvider,
 }
 
@@ -69,6 +79,10 @@ enum ShellInput {
     ToggleLauncher,
     /// Show/hide the wallpaper picker (sent on `SIGUSR2` or the bar button).
     ToggleWallpaper,
+    /// Show/hide the theme gallery (sent by the theme menu in the bar).
+    ToggleTheme,
+    /// Apply and remember this theme, reloading the stylesheet.
+    SetTheme(String),
     /// Remember and show this wallpaper everywhere.
     SetWallpaper(PathBuf),
     /// Re-read `style.css` after a wallpaper change regenerated it.
@@ -96,13 +110,16 @@ impl SimpleComponent for Shell {
         // The stylesheet needs a live GDK display, so it is loaded here rather
         // than in `main`, where the display does not exist yet.
         //
-        // A user stylesheet at ~/.config/mango-shell/style.css is appended on
-        // top, so wallpaper-derived `@define-color` overrides (e.g. from
-        // matugen) win over the built-in Material 3 defaults. We keep our own
+        // The picked theme's token overrides are spliced in after the built-in
+        // defaults, and a user stylesheet at ~/.config/mango-shell/style.css
+        // is appended on top, so wallpaper-derived `@define-color` overrides
+        // (e.g. from matugen) still win over the theme. We keep our own
         // provider (rather than `relm4::set_global_css`) so it can be reloaded
-        // in place when the wallpaper — and therefore the palette — changes.
+        // in place when the theme — or the wallpaper, and therefore the
+        // palette — changes.
+        let theme = theme::load_current();
         let css = gtk::CssProvider::new();
-        css.load_from_data(&load_css());
+        css.load_from_data(&load_css(theme));
         if let Some(display) = gdk::Display::default() {
             gtk::style_context_add_provider_for_display(
                 &display,
@@ -125,20 +142,32 @@ impl SimpleComponent for Shell {
         let current = wallpaper::load_current();
 
         // The launcher and the picker are single surfaces shared by every
-        // monitor. They stay hidden until their toggle arrives.
-        let launcher = LauncherModel::builder().launch(()).detach();
+        // monitor; they fly out from under the bar and stay hidden until
+        // their toggle arrives.
+        let launcher = LauncherModel::builder().launch(current.clone()).detach();
         let picker = WallpaperPickerModel::builder()
             .launch(current.clone())
             .forward(sender.input_sender(), |output| match output {
                 WallpaperOutput::Apply(path) => ShellInput::SetWallpaper(path),
             });
+        // The theme gallery is another shared overlay, opened from the bar's
+        // theme menu ("Browse themes…"). It shows the wallpaper on its banner
+        // too, so the shell pushes the current one right away.
+        let theme_picker = ThemePickerModel::builder()
+            .launch(theme.id.to_string())
+            .forward(sender.input_sender(), |output| match output {
+                ThemeOutput::Apply(id) => ShellInput::SetTheme(id),
+            });
+        theme_picker.emit(ThemePickerInput::Banner(current.clone()));
 
         let model = Shell {
             bars: HashMap::new(),
             wallpapers: HashMap::new(),
             launcher,
             picker,
+            theme_picker,
             current,
+            theme,
             css,
         };
 
@@ -167,11 +196,15 @@ impl SimpleComponent for Shell {
                     .launch(BarInit {
                         name: name.clone(),
                         monitor: monitor.clone(),
+                        theme: self.theme.id.to_string(),
                     })
-                    // The bar's buttons toggle the shell's overlays.
+                    // The bar's buttons toggle the shell's overlays, and its
+                    // theme menu applies themes.
                     .forward(sender.input_sender(), |output| match output {
                         BarOutput::ToggleLauncher => ShellInput::ToggleLauncher,
                         BarOutput::ToggleWallpaper => ShellInput::ToggleWallpaper,
+                        BarOutput::ToggleThemePicker => ShellInput::ToggleTheme,
+                        BarOutput::SetTheme(id) => ShellInput::SetTheme(id),
                     });
                 // One background surface per monitor, showing the current
                 // wallpaper (if any).
@@ -208,6 +241,27 @@ impl SimpleComponent for Shell {
 
             ShellInput::ToggleWallpaper => self.picker.emit(WallpaperPickerInput::Toggle),
 
+            ShellInput::ToggleTheme => self.theme_picker.emit(ThemePickerInput::Toggle),
+
+            ShellInput::SetTheme(id) => {
+                if !theme::is_known(&id) {
+                    return;
+                }
+                theme::save_current(&id);
+                self.theme = theme::get(&id);
+                // Reload the whole stylesheet: the theme's token overrides are
+                // spliced into the string the provider was built from.
+                let theme = self.theme;
+                self.css.load_from_data(&load_css(theme));
+                // Keep the gallery highlight...
+                self.theme_picker
+                    .emit(ThemePickerInput::SetCurrent(id.clone()));
+                // ...and the popover checkmarks in every bar in sync.
+                for controller in self.bars.values() {
+                    controller.emit(BarInput::SetTheme(id.clone()));
+                }
+            }
+
             ShellInput::SetWallpaper(path) => {
                 wallpaper::save_current(&path);
                 self.current = Some(path.clone());
@@ -215,9 +269,16 @@ impl SimpleComponent for Shell {
                 for controller in self.wallpapers.values() {
                     controller.emit(WallpaperInput::SetPath(Some(path.clone())));
                 }
-                // ...and keep the picker's highlight in sync.
+                // ...and keep the picker's highlight and every flyout banner
+                // in sync. The picker's own SetCurrent marks its tile; the
+                // launcher and theme gallery just repaint their wallpaper
+                // headers.
                 self.picker
                     .emit(WallpaperPickerInput::SetCurrent(path.clone()));
+                self.launcher
+                    .emit(LauncherInput::Banner(Some(path.clone())));
+                self.theme_picker
+                    .emit(ThemePickerInput::Banner(Some(path.clone())));
                 // Let an optional hook (matugen, pywal, …) re-derive the
                 // palette, then reload the stylesheet once it finishes.
                 let sender = sender.clone();
@@ -227,7 +288,7 @@ impl SimpleComponent for Shell {
                 });
             }
 
-            ShellInput::ReloadCss => self.css.load_from_data(&load_css()),
+            ShellInput::ReloadCss => self.css.load_from_data(&load_css(self.theme)),
         }
     }
 }
@@ -240,6 +301,9 @@ impl SimpleComponent for Shell {
 /// bind=SUPER,d,spawn,pkill -SIGUSR1 mango-shell
 /// bind=SUPER,w,spawn,pkill -SIGUSR2 mango-shell
 /// ```
+///
+/// The theme gallery has no signal of its own (Linux only has two user
+/// signals) — open it from the theme menu's "Browse themes…" row instead.
 ///
 /// A signal keeps the shell a single instance, unlike spawning a second copy.
 fn spawn_signal_watcher(sender: &ComponentSender<Shell>) {
@@ -325,14 +389,19 @@ fn find_monitor(name: &str) -> Option<gdk::Monitor> {
     None
 }
 
-/// The built-in stylesheet, plus an optional user override appended after it.
+/// Build the stylesheet the shell loads: the built-in defaults, then the
+/// selected theme's token overrides, then an optional user override on top.
 ///
 /// The override lives at `~/.config/mango-shell/style.css` and is meant for
 /// `@define-color` tokens, which is how you tint the shell to the wallpaper
-/// (the way end4-pC does with matugen). Keeping it as a plain append means no
-/// extra provider-priority plumbing.
-fn load_css() -> String {
+/// (the way end4-pC does with matugen). It sits after the theme, so a
+/// wallpaper-derived palette always wins. Keeping everything in one appended
+/// string means no extra provider-priority plumbing.
+fn load_css(theme: &theme::Theme) -> String {
     let mut css = String::from(include_str!("style.css"));
+
+    css.push('\n');
+    css.push_str(theme.css);
 
     if let Some(home) = std::env::var_os("HOME") {
         let path = std::path::Path::new(&home).join(".config/mango-shell/style.css");

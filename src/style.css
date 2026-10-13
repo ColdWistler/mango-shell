@@ -287,24 +287,44 @@ window.mango-wallpaper {
     background-image: none;
 }
 
-/* --- Wallpaper picker (Overlay layer, full-screen scrim) -------------- */
+/* --- Fly-out applets (launcher, wallpaper picker, theme gallery) ------ */
 
-window.mango-picker {
-    background-color: @scrim;
+/* Each applet is a panel that hangs just below the bar instead of covering
+ * the screen: an Overlay-layer surface that is transparent except for the
+ * card itself, which slides down out of the bar (a GtkRevealer animates it).
+ * The look follows the app launchers in the HyDE project (its rofi
+ * CompactPanel): a near-opaque rounded card with the current wallpaper
+ * pinned to the top, a pill search field and an accent-highlighted
+ * selection. */
+
+window.mango-flyout {
+    background-color: transparent;
     background-image: none;
     font-family: "Google Sans Flex", "Rubik", "Inter", "Cantarell", sans-serif;
     font-size: 15px;
 }
 
-.mango-picker-panel {
-    background-color: @layer2;
-    border: 1px solid @layer0_border;
-    border-radius: 23px;
-    padding: 14px;
-    min-width: 980px;
+window.mango-flyout > revealer {
+    background-color: transparent;
 }
 
-window.mango-picker entry {
+/* The card itself. */
+.mango-flyout-panel {
+    background-color: alpha(@layer2, 0.97);
+    border: 1px solid alpha(@primary, 0.45);
+    border-radius: 22px;
+    padding: 14px;
+}
+
+/* The current wallpaper snapshot pinned to the top of every flyout (a HyDE
+ * staple, straight from its `wall.thmb` launcher headers). */
+.mango-flyout-banner {
+    border-radius: 15px;
+    background-color: alpha(@on_surface, 0.06);
+}
+
+/* Pill search field shared by the launcher and the wallpaper picker. */
+window.mango-flyout entry {
     background-image: none;
     background-color: alpha(@on_surface, 0.06);
     color: @on_surface;
@@ -317,13 +337,68 @@ window.mango-picker entry {
     transition: border-color 150ms ease, background-color 150ms ease;
 }
 
-window.mango-picker entry:focus {
+window.mango-flyout entry:focus {
     border-color: @primary;
     background-color: alpha(@on_surface, 0.09);
 }
 
-window.mango-picker entry > text > placeholder {
+window.mango-flyout entry > text > placeholder {
     color: @outline;
+}
+
+window.mango-flyout scrolledwindow {
+    background: transparent;
+}
+
+window.mango-flyout scrollbar {
+    background: transparent;
+}
+
+window.mango-flyout scrollbar slider {
+    background-color: alpha(@on_surface, 0.22);
+    border-radius: 9999px;
+    min-width: 6px;
+    min-height: 6px;
+    margin: 2px;
+}
+
+/* --- App launcher ------------------------------------------------------ */
+
+.mango-launcher-panel {
+    min-width: 540px;
+}
+
+window.mango-flyout list {
+    background: transparent;
+}
+
+window.mango-flyout row {
+    padding: 8px 12px;
+    margin: 1px 0;
+    border-radius: 14px;
+    color: @on_surface;
+    transition: background-color 120ms ease;
+}
+
+window.mango-flyout row:hover {
+    background-color: alpha(@on_surface, 0.06);
+}
+
+/* A HyDE signature: selecting an app paints the whole row with the accent,
+ * icon and label switching to the on-accent colour. */
+window.mango-flyout row:selected {
+    background-color: @primary;
+}
+
+window.mango-flyout row:selected label {
+    color: @on_primary;
+    font-weight: 600;
+}
+
+/* --- Wallpaper picker -------------------------------------------------- */
+
+.mango-picker-panel {
+    min-width: 900px;
 }
 
 .mango-picker-status {
@@ -332,17 +407,13 @@ window.mango-picker entry > text > placeholder {
     font-size: 13px;
 }
 
-window.mango-picker scrolledwindow {
-    background: transparent;
-}
-
 flowbox.mango-picker-grid {
     background: transparent;
 }
 
 flowboxchild.mango-picker-tile {
     padding: 6px;
-    border-radius: 18px;
+    border-radius: 16px;
     background-color: transparent;
     transition: background-color 120ms ease;
 }
@@ -370,97 +441,110 @@ flowboxchild.mango-picker-tile picture {
     font-size: 12px;
 }
 
-/* Scrollbar. */
-window.mango-picker scrollbar {
-    background: transparent;
+/* --- Theme gallery ----------------------------------------------------- */
+
+.mango-theme-panel {
+    min-width: 560px;
 }
 
-window.mango-picker scrollbar slider {
-    background-color: alpha(@on_surface, 0.22);
-    border-radius: 9999px;
-    min-width: 6px;
-    min-height: 6px;
-    margin: 2px;
-}
-
-/* --- Application launcher (Overlay layer, full-screen scrim) ---------- */
-
-/* The full-screen dimmed backdrop behind the search panel. */
-window.mango-launcher {
-    background-color: @scrim;
-    background-image: none;
-    font-family: "Google Sans Flex", "Rubik", "Inter", "Cantarell", sans-serif;
-    font-size: 15px;
-}
-
-.mango-launcher-panel {
-    background-color: @layer2;
-    border: 1px solid @layer0_border;
-    border-radius: 23px;
-    padding: 12px;
-    min-width: 520px;
-}
-
-window.mango-launcher entry {
-    background-image: none;
-    background-color: alpha(@on_surface, 0.06);
+.mango-theme-title {
     color: @on_surface;
-    border: 1px solid @outline_variant;
-    border-radius: 9999px;
-    padding: 10px 16px;
-    min-height: 24px;
-    caret-color: @primary;
-    box-shadow: none;
-    transition: border-color 150ms ease, background-color 150ms ease;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 0 4px;
 }
 
-window.mango-launcher entry:focus {
-    border-color: @primary;
-    background-color: alpha(@on_surface, 0.09);
-}
-
-window.mango-launcher entry > text > placeholder {
-    color: @outline;
-}
-
-window.mango-launcher scrolledwindow {
+flowbox.mango-theme-grid {
     background: transparent;
 }
 
-window.mango-launcher list {
-    background: transparent;
-}
-
-window.mango-launcher row {
-    padding: 8px 12px;
-    margin: 1px 0;
-    border-radius: 14px;
-    color: @on_surface;
+flowboxchild.mango-theme-card {
+    padding: 10px;
+    border-radius: 16px;
+    background-color: alpha(@on_surface, 0.04);
     transition: background-color 120ms ease;
 }
 
-window.mango-launcher row:hover {
-    background-color: alpha(@on_surface, 0.06);
+flowboxchild.mango-theme-card:hover {
+    background-color: alpha(@on_surface, 0.08);
 }
 
-window.mango-launcher row:selected {
+flowboxchild.mango-theme-card:selected {
     background-color: @secondary_container;
 }
 
-window.mango-launcher row:selected label {
-    color: @on_secondary_container;
+flowboxchild.mango-theme-card.current {
+    background-color: @primary_container;
+}
+
+.mango-theme-name {
+    color: @on_surface;
     font-weight: 600;
+    font-size: 14px;
 }
 
-/* Scrollbar. */
-window.mango-launcher scrollbar {
+flowboxchild.mango-theme-card:selected .mango-theme-name {
+    color: @on_secondary_container;
+}
+
+flowboxchild.mango-theme-card.current .mango-theme-name {
+    color: @on_primary_container;
+}
+
+flowboxchild.mango-theme-card:selected .mango-theme-check {
+    color: @on_secondary_container;
+}
+
+flowboxchild.mango-theme-card.current .mango-theme-check {
+    color: @on_primary_container;
+}
+
+/* --- Theme switcher (bar popover) -------------------------------------- */
+
+/* The round theme button in the bar (GtkMenuButton inherits the `button`
+ * node, so the mango-icon-button rules above already apply). */
+window.mango-bar button.mango-theme-button {
+    -gtk-icon-size: 17px;
+}
+
+/* The popover opened by the theme button. */
+popover.mango-theme-popover > contents {
+    background-color: @layer2;
+    border: 1px solid @layer0_border;
+    border-radius: 14px;
+    padding: 5px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.mango-theme-menu {
     background: transparent;
+    min-width: 230px;
 }
 
-window.mango-launcher scrollbar slider {
-    background-color: alpha(@on_surface, 0.22);
-    border-radius: 9999px;
-    min-width: 6px;
-    min-height: 6px;
-    margin: 2px;
+/* One theme entry in the popover: palette preview + name + checkmark. */
+button.mango-theme-item {
+    background-image: none;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 10px;
+    padding: 5px 8px;
+    min-height: 0;
+    color: @on_surface;
+    font-size: 14px;
+}
+
+button.mango-theme-item:hover {
+    background-color: alpha(@on_surface, 0.08);
+}
+
+.mango-theme-check {
+    color: @primary;
+    -gtk-icon-size: 15px;
+}
+
+.mango-theme-separator {
+    background-color: @outline_variant;
+    min-height: 1px;
+    margin: 4px 6px;
 }

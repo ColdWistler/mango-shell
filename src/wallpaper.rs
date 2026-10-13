@@ -3,10 +3,12 @@
 //! There is deliberately no external wallpaper daemon here: the shell paints
 //! the desktop itself. [`WallpaperModel`] is one [`Layer::Background`] surface
 //! per monitor holding a `GtkPicture` fitted to cover the screen, and
-//! [`WallpaperPickerModel`] is a single [`Layer::Overlay`] grid of thumbnails
-//! (toggled by the shell, like the launcher). Applying a thumbnail simply
-//! swaps the picture on every background surface and remembers the choice in
-//! `~/.config/mango-shell/wallpaper`, so it is restored on the next start.
+//! [`WallpaperPickerModel`] is a single [`Layer::Overlay`] fly-out panel (see
+//! [`crate::flyout`]): it hangs under the bar and slides out of it, holding a
+//! grid of thumbnails (toggled by the shell, like the launcher). Applying a
+//! thumbnail simply swaps the picture on every background surface and
+//! remembers the choice in `~/.config/mango-shell/wallpaper`, so it is
+//! restored on the next start.
 //!
 //! Thumbnails are the only fiddly part. `GdkPixbuf` is not `Send`, but
 //! `gdk::Texture` is, and `gdk::MemoryTexture::new` may only run on the main
@@ -22,6 +24,8 @@ use gtk::glib;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use relm4::prelude::*;
+
+use crate::flyout;
 
 /// Where wallpapers are read from, relative to `$HOME`.
 const DEFAULT_DIR: &str = "Pictures/Wallpapers";
@@ -169,6 +173,10 @@ impl SimpleComponent for WallpaperModel {
         root.set_namespace(Some("mango-wallpaper"));
         root.set_layer(Layer::Background);
         root.set_keyboard_mode(KeyboardMode::None);
+        // -1 tells the compositor to ignore the bar's exclusive zone, so the
+        // image stretches all the way to the top edge — behind the panel —
+        // instead of being pushed below it.
+        root.set_exclusive_zone(-1);
         root.set_anchor(Edge::Top, true);
         root.set_anchor(Edge::Bottom, true);
         root.set_anchor(Edge::Left, true);
@@ -231,9 +239,12 @@ struct Tile {
 
 pub struct WallpaperPickerModel {
     window: gtk::Window,
+    /// Slides the panel out from under the bar.
+    revealer: gtk::Revealer,
+    /// The wallpaper snapshot in the panel header.
+    banner: flyout::Banner,
     search: gtk::SearchEntry,
     status: gtk::Label,
-    scrolled: gtk::ScrolledWindow,
     flow: gtk::FlowBox,
     /// Every wallpaper on disk, in display order; never mutated after init.
     images: Vec<PathBuf>,
@@ -292,20 +303,11 @@ impl SimpleComponent for WallpaperPickerModel {
     view! {
         #[root]
         gtk::Window {
-            set_css_classes: &["mango-picker"],
+            set_css_classes: &["mango-flyout", "mango-picker"],
             set_decorated: false,
 
-            gtk::Box {
-                set_css_classes: &["mango-picker-panel"],
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 10,
-                set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Center,
-
-                append = &model.search.clone() {},
-                append = &model.status.clone() {},
-                append = &model.scrolled.clone() {},
-            }
+            #[wrap(Some)]
+            set_child = &model.revealer.clone() {},
         }
     }
 
@@ -314,17 +316,12 @@ impl SimpleComponent for WallpaperPickerModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Same surface recipe as the launcher: full-screen, exclusive keyboard
-        // while open, hidden until toggled.
-        root.init_layer_shell();
-        root.set_namespace(Some("mango-picker"));
-        root.set_layer(Layer::Overlay);
-        root.set_keyboard_mode(KeyboardMode::Exclusive);
-        root.set_anchor(Edge::Top, true);
-        root.set_anchor(Edge::Bottom, true);
-        root.set_anchor(Edge::Left, true);
-        root.set_anchor(Edge::Right, true);
-        root.set_visible(false);
+        // Fly-out surface: hugs the top of the monitor just below the bar,
+        // exclusive keyboard while open, hidden until toggled.
+        flyout::prepare_layer(&root, "mango-picker");
+
+        let banner = flyout::make_banner();
+        flyout::set_banner(&banner, current.as_deref());
 
         let search = gtk::SearchEntry::new();
         search.set_placeholder_text(Some("Search wallpapers…"));
@@ -347,8 +344,21 @@ impl SimpleComponent for WallpaperPickerModel {
 
         let scrolled = gtk::ScrolledWindow::new();
         scrolled.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
-        scrolled.set_min_content_height(520);
+        scrolled.set_min_content_height(440);
         scrolled.set_child(Some(&flow));
+
+        // The panel: wallpaper banner, then the search pill and the grid.
+        let panel = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        panel.add_css_class("mango-picker-panel");
+        panel.add_css_class("mango-flyout-panel");
+        panel.append(&banner.widget);
+        panel.append(&search);
+        panel.append(&status);
+        panel.append(&scrolled);
+
+        let revealer = flyout::make_revealer();
+        revealer.set_child(Some(&panel));
+        flyout::wire_hide(&root, &revealer);
 
         // Build a tile for every image up front (cheap: only the visible ones
         // are realized), so indices stay stable and filtering is just a
@@ -415,9 +425,10 @@ impl SimpleComponent for WallpaperPickerModel {
 
         let mut model = WallpaperPickerModel {
             window: root.clone(),
+            revealer,
+            banner,
             search,
             status,
-            scrolled,
             flow,
             images,
             tiles,
@@ -431,23 +442,17 @@ impl SimpleComponent for WallpaperPickerModel {
 
         let widgets = view_output!();
 
-        // Clicking the dimmed backdrop — anything outside the panel — closes
-        // the picker; clicks on tiles stay inside, so they pass through.
-        if let Some(panel) = root.child() {
-            let hide_sender = backdrop_sender;
-            let click = gtk::GestureClick::new();
-            click.connect_pressed(move |_, _, x, y| {
-                let area = panel.allocation();
-                let inside = x >= f64::from(area.x())
-                    && x < f64::from(area.x() + area.width())
-                    && y >= f64::from(area.y())
-                    && y < f64::from(area.y() + area.height());
-                if !inside {
-                    hide_sender.input(WallpaperPickerInput::Hide);
-                }
-            });
-            root.add_controller(click);
-        }
+        // Clicking anywhere outside the panel — the transparent fly-out areas
+        // over the open window — closes the picker; clicks on tiles stay
+        // inside, so they pass through to the grid.
+        let click_root = root.clone();
+        let click = gtk::GestureClick::new();
+        click.connect_pressed(move |_, _, x, y| {
+            if !flyout::click_inside(&panel, &click_root, x, y) {
+                backdrop_sender.input(WallpaperPickerInput::Hide);
+            }
+        });
+        root.add_controller(click);
 
         model.filter("");
         model.highlight_current();
@@ -485,17 +490,16 @@ impl SimpleComponent for WallpaperPickerModel {
 }
 
 impl WallpaperPickerModel {
-    /// Reset the query and present the surface.
+    /// Reset the query and slide the panel out of the bar.
     fn show(&mut self, sender: &ComponentSender<Self>) {
         self.search.set_text("");
         self.filter("");
-        self.window.present();
-        self.search.grab_focus();
+        flyout::show(&self.window, &self.revealer, Some(self.search.upcast_ref()));
         self.start_loading(sender);
     }
 
     fn hide(&mut self) {
-        self.window.set_visible(false);
+        flyout::hide(&self.revealer);
     }
 
     fn start_loading(&mut self, sender: &ComponentSender<Self>) {
@@ -581,6 +585,8 @@ impl WallpaperPickerModel {
             self.mark(&previous, false);
         }
         self.mark(&path, true);
+        // The panel header shows the current wallpaper too.
+        flyout::set_banner(&self.banner, Some(&path));
     }
 
     /// Apply the remembered active wallpaper to the grid without emitting.

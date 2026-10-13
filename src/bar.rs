@@ -18,6 +18,7 @@ use crate::mango::{self, TagView};
 use crate::widgets::brightness::BrightnessModel;
 use crate::widgets::clock::ClockModel;
 use crate::widgets::tags::{TagsInput, TagsModel, TagsOutput};
+use crate::widgets::theme::{ThemeButtonInput, ThemeButtonModel, ThemeButtonOutput};
 use crate::widgets::tray::TrayModel;
 use crate::widgets::volume::VolumeModel;
 use crate::widgets::wifi::WifiModel;
@@ -28,6 +29,8 @@ pub struct BarInit {
     pub name: String,
     /// The GDK monitor this bar is drawn on.
     pub monitor: gdk::Monitor,
+    /// The theme id active at launch, so the popover checkmark is right.
+    pub theme: String,
 }
 
 #[derive(Debug)]
@@ -36,6 +39,8 @@ pub enum BarInput {
     SetTags(Vec<TagView>),
     /// A tag button was clicked.
     SwitchTag(TagsOutput),
+    /// The active theme changed; sync the popover checkmark.
+    SetTheme(String),
 }
 
 /// Messages the bar sends up to the shell.
@@ -45,12 +50,17 @@ pub enum BarOutput {
     ToggleLauncher,
     /// The wallpaper button was pressed.
     ToggleWallpaper,
+    /// The theme button's gallery row was pressed.
+    ToggleThemePicker,
+    /// A theme was picked in the bar's popover.
+    SetTheme(String),
 }
 
 pub struct BarModel {
     name: String,
     launcher_button: gtk::Button,
     wallpaper_button: gtk::Button,
+    theme_button: Controller<ThemeButtonModel>,
     tags: Controller<TagsModel>,
     clock: Controller<ClockModel>,
     tray: Controller<TrayModel>,
@@ -84,6 +94,7 @@ impl SimpleComponent for BarModel {
 
                     append = &model.launcher_button.clone() {},
                     append = &model.wallpaper_button.clone() {},
+                    append = &model.theme_button.widget().clone() {},
 
                     append = &gtk::Box {
                         set_css_classes: &["mango-group"],
@@ -191,11 +202,21 @@ impl SimpleComponent for BarModel {
         let wifi = WifiModel::builder().launch(()).detach();
         let volume = VolumeModel::builder().launch(()).detach();
         let brightness = BrightnessModel::builder().launch(()).detach();
+        // The theme menu lives in the bar but the stylesheet lives in the
+        // shell, so its choices go straight to the bar's output.
+        let theme_button = ThemeButtonModel::builder().launch(init.theme).forward(
+            sender.output_sender(),
+            |output| match output {
+                ThemeButtonOutput::Apply(id) => BarOutput::SetTheme(id),
+                ThemeButtonOutput::OpenGallery => BarOutput::ToggleThemePicker,
+            },
+        );
 
         let model = BarModel {
             name: init.name,
             launcher_button,
             wallpaper_button,
+            theme_button,
             tags,
             clock,
             tray,
@@ -216,6 +237,7 @@ impl SimpleComponent for BarModel {
         match msg {
             BarInput::SetTags(tags) => self.tags.emit(TagsInput::Set(tags)),
             BarInput::SwitchTag(TagsOutput::Switch(index)) => mango::switch_tag(index),
+            BarInput::SetTheme(id) => self.theme_button.emit(ThemeButtonInput::SetTheme(id)),
         }
     }
 }

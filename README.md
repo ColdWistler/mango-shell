@@ -34,22 +34,54 @@ the "hug" bar layout. Concretely:
 - The right cluster holds the **system tray** plus **Wi-Fi, volume and
   brightness** readouts, each pill-shaped and hidden when it has nothing to
   show (no backlight, no tray items, and so on).
-- The launcher is a full-screen scrim with a centred Material 3 panel, a
-  pill-shaped search field and rounded, highlighted result rows.
+- The launcher, wallpaper picker and theme gallery are **fly-outs**: instead of
+  a full-screen scrim they hang just below the bar and slide down out of it,
+  floating over whatever window is open. Each is styled after the app
+  launchers in the [HyDE project](https://github.com/HyDE-Project/HyDE) — a
+  near-opaque rounded card with the current wallpaper pinned to the top, a
+  pill search field and an accent-highlighted selection.
 - The **wallpaper** is drawn by the shell itself — no `swaybg`/`swww`: one
-  background surface per monitor, plus an overlay **picker** holding a grid of
+  background surface per monitor, plus a fly-out **picker** holding a grid of
   thumbnails.
+- A built-in **theme switcher**: a round button in the left cluster opens a
+  popover of palettes (Nord, Catppuccin Mocha, Gruvbox, Tokyo Night, plus the
+  built-in Mango), and its *Browse themes…* row opens the fly-out gallery.
 
 Everything lives in [`src/style.css`](src/style.css) as plain GTK4 CSS with
 Material 3 tokens declared up top (`@define-color layer0 …`, `@primary …`).
 
+### Themes
+
+Four hand-tuned colour schemes ship with the shell, each a small block of
+`@define-color` overrides in [`src/themes/`](src/themes):
+
+| Theme | id | Base palette |
+| --- | --- | --- |
+| Mango (default) | `mango` | the warm Material You tokens built into `style.css` |
+| [Nord](https://www.nordtheme.com) | `nord` | polar night + frost |
+| [Catppuccin](https://catppuccin.com) | `catppuccin` | Mocha (base `#1e1e2e`, mauve accent) |
+| [Gruvbox](https://github.com/morhetz/gruvbox) | `gruvbox` | dark (retro-groove, yellow accent) |
+| [Tokyo Night](https://github.com/folke/tokyonight.nvim) | `tokyonight` | night (bg `#1a1b26`, blue accent) |
+
+Switch them with the **theme button** in the bar (next to the launcher and
+wallpaper buttons): the popover applies a theme instantly and stays useful for
+quick flips, while *Browse themes…* opens the fly-out gallery with a larger
+palette preview per theme (arrow keys to move, Enter to apply, Escape/backdrop
+to close). The gallery also recolours live as you click, so you can compare
+against each palette before closing it. The choice is written to
+`~/.config/mango-shell/theme` and restored on the next start.
+
+> Adding a theme is just an extra `${id}.css` file in `src/themes/` plus one
+> entry in [`src/theme.rs`](src/theme.rs).
+
 ### Theming it to your wallpaper
 
 end4 derives its palette from the wallpaper (via matugen). This shell does the
-same thing in the simplest possible way: it appends an optional user stylesheet
-at `~/.config/mango-shell/style.css` **after** the built-in one, so any
-`@define-color` you put there wins. Generate it however you like — for example
-a matugen template mapping the wallpaper's Material 3 roles onto these tokens:
+same thing in the simplest possible way: the stylesheet is layered as *base
+`style.css` → selected theme → optional user override*, so an optional user
+stylesheet at `~/.config/mango-shell/style.css` wins over everything. Generate
+it however you like — for example a matugen template mapping the wallpaper's
+Material 3 roles onto these tokens:
 
 ```css
 /* ~/.config/mango-shell/style.css */
@@ -149,10 +181,12 @@ cargo install --path .
 
 ### Application launcher
 
-The shell includes an app launcher: a full-screen `Overlay`-layer surface with
-a dimmed backdrop and a centred Material 3 panel. It enumerates every visible
+The shell includes an app launcher: an `Overlay`-layer **fly-out** that hangs
+just below the bar (no full-screen scrim) and slides down out of it, so it
+floats over the window you are working in. It enumerates every visible
 `.desktop` entry through `gio::AppInfo`, filters as you type, and launches the
-highlighted one on Enter or click.
+highlighted one on Enter or click. The card follows HyDE's launchers: the
+current wallpaper on top, a pill search field and accent-highlighted rows.
 
 Open it either with the round **launcher button** at the left end of the bar,
 or from a keybind in `~/.config/mango/config.conf`:
@@ -163,17 +197,20 @@ bind=SUPER,d,spawn,pkill -SIGUSR1 mango-shell
 
 `SIGUSR1` toggles the launcher inside the already-running shell (see
 `spawn_signal_watcher` in `src/main.rs`), so there is only ever one
-`mango-shell` process. `Escape`, or a click on the backdrop outside the panel,
+`mango-shell` process. `Escape`, or a click anywhere outside the panel,
 closes it. Nothing is spawned at startup; the surface is created hidden and
 only presented on demand.
 
 ### Wallpaper
 
 The shell draws the desktop background itself — no `swaybg`, `swww` or any
-other daemon. Each monitor gets one `Background`-layer surface holding a
-`GtkPicture` fitted to **cover**, and a single `Overlay`-layer **picker** shows
-a thumbnail grid of the images in `~/Pictures/Wallpapers` (override the folder
-with the `MANGO_WALLPAPER_DIR` environment variable).
+other daemon. Each monitor gets one `Background`-layer surface, anchored to all
+four edges with an exclusive zone of `-1` so it fills the screen and stretches
+behind the top panel; it holds a `GtkPicture` fitted to **cover**. A single
+`Overlay`-layer **fly-out picker** hangs below the bar and slides out of it
+(same recipe as the launcher), showing a thumbnail grid of the images in
+`~/Pictures/Wallpapers` (override the folder with the `MANGO_WALLPAPER_DIR`
+environment variable).
 
 Open the picker with the round **wallpaper button** next to the launcher
 button, or from a keybind:
@@ -184,9 +221,9 @@ bind=SUPER,w,spawn,pkill -SIGUSR2 mango-shell
 
 Click a thumbnail to apply it live — the panel stays open so you can flip
 through them; type to filter by file name, arrow keys move the highlight and
-Enter applies it. `Escape`, a click on the backdrop, or the toggle again closes
-it. The choice is written to `~/.config/mango-shell/wallpaper` and restored the
-next time the shell starts.
+Enter applies it. `Escape`, a click outside the panel, or the toggle again
+closes it. The choice is written to `~/.config/mango-shell/wallpaper` and
+restored the next time the shell starts.
 
 Previews are decoded on a background thread. `GdkPixbuf` is not `Send` and
 `gdk::MemoryTexture` may only be built on the main thread, so each image is
@@ -247,26 +284,46 @@ NetworkManager and systemd, which a Mango session already has.
 ```text
 src/
   main.rs           Shell: one invisible 1x1 layer surface. Watches monitors,
-                    owns the Mango IPC feed, spawns one bar per monitor, and
-                    loads the stylesheet (+ optional user override).
+                    owns the Mango IPC feed, spawns one bar + wallpaper surface
+                    per monitor, and loads the stylesheet (defaults + theme +
+                    optional user override, reloaded when the theme or
+                    wallpaper changes).
   bar.rs            BarModel: one Top-layer layer surface per monitor. Holds
                     the widget components and lays them out in a CenterBox,
-                    each cluster wrapped in a `.mango-group` pill. Its launcher
-                    button forwards a ToggleLauncher output to the shell.
-  launcher.rs       LauncherModel: one full-screen Overlay-layer surface with a
-                    scrim and a centred panel. Searches .desktop entries with
-                    gio::AppInfo; toggled via SIGUSR1 or the bar button.
+                    each cluster wrapped in a `.mango-group` pill. Its buttons
+                    forward launcher/wallpaper/theme toggles to the shell.
+  flyout.rs         Shared recipe for the launcher/wallpaper/theme "fly-outs":
+                    an Overlay-layer panel that hangs under the bar and slides
+                    out of it (a GtkRevealer), plus the wallpaper banner header.
+  launcher.rs       LauncherModel: an Overlay-layer fly-out panel. Searches
+                    .desktop entries with gio::AppInfo; toggled via SIGUSR1 or
+                    the bar button.
+  wallpaper.rs      WallpaperModel: one Background-layer surface per monitor
+                    showing the current image (cover, full-screen behind the
+                    bar). WallpaperPickerModel: a fly-out thumbnail grid whose
+                    previews decode on a worker thread; toggled via SIGUSR2 or
+                    the bar button.
+  theme.rs          Built-in themes (Theme/THEMES), persistence
+                    (~/.config/mango-shell/theme) and ThemePickerModel, a
+                    fly-out gallery of palette cards opened from the bar's
+                    theme menu.
   mango.rs          Mango IPC: TagView, monitor stream, tag dispatch.
+  themes/           `@define-color` override blocks per theme; the shell
+                    splices the active one between style.css and the user
+                    override.
   widgets/
     clock.rs        ClockModel: date • time, 1 Hz timer.
     tags.rs         TagsModel: clickable tag buttons (occupied/active/urgent).
+    theme.rs        ThemeButtonModel: the bar's round theme button with its
+                    popover of palettes (live cairo previews + checkmarks).
     volume.rs       VolumeModel: wpctl-backed volume/mute, click + scroll.
     wifi.rs         WifiModel: nmcli-backed SSID/signal readout.
     brightness.rs   BrightnessModel: sysfs backlight, scroll to adjust.
     tray.rs         TrayModel: StatusNotifierItem host + DBusMenu popover.
-  style.css         Material 3 theme. Loaded at startup with
-                    relm4::set_global_css(); ~/.config/mango-shell/style.css is
-                    appended so wallpaper palettes can override the tokens.
+  style.css         Base Material 3 theme (shapes + default tokens), loaded
+                    into a custom CssProvider so it can be reloaded live. The
+                    selected theme's tokens and any user stylesheet are
+                    appended after it, in that order of precedence.
 ```
 
 ### The two things that actually matter
@@ -318,16 +375,21 @@ Notable differences, and why:
 
 - **Children are wired with `append = &child.widget().clone() {}`**, the same
   trick OkShell uses in `frame.rs` to drop child-component widgets into a view.
-- **No config system, theming, or service layer yet.** OkShell has
-  `okshell-config` (reactive `reactive_graph` stores) and `okshell-services`.
-  That is the natural next step, but it is a lot of machinery for a starter.
+- **No config system or service layer yet.** OkShell has `okshell-config`
+  (reactive `reactive_graph` stores) and `okshell-services`. That is the
+  natural next step, but it is a lot of machinery for a starter. Theming is
+  covered more simply: built-in `@define-color` themes plus an optional user
+  stylesheet, all spliced into one `CssProvider` (see `src/theme.rs`).
 
 ---
 
 ## 5. Next steps / ideas
 
-- **Configure/theme it.** Add a config file (TOML) and read colors/height from
-  it instead of `style.css`; or wire up `matugen` like OkShell does.
+- **Configure it.** Add a config file (TOML) to tune the theme list, bar
+  height and behaviour, instead of hardcoding them.
+- **More themes.** Add a `${id}.css` in `src/themes/` plus a `THEMES` entry,
+  or wire up `matugen`/pywal palettes (the optional user stylesheet already
+  layers on top of any theme).
 - **More modules.** Battery (UPower), media player (MPRIS), notifications,
   keyboard layout, a power/session menu. (Wi-Fi, volume, brightness and the
   system tray are already in `widgets/`.)

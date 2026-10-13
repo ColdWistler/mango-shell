@@ -1,9 +1,14 @@
 //! Application launcher.
 //!
-//! A single centred [`Layer::Overlay`] surface that stays hidden until the
-//! shell toggles it (currently via `SIGUSR1`, see `main.rs`). It lists every
-//! `.desktop` entry GLib knows about, filters them as you type and launches the
-//! highlighted one with [`gio::AppInfo::launch`].
+//! A single [`Layer::Overlay`] surface shared by every monitor. Instead of
+//! covering the whole screen it is a "fly-out": it hangs just below the shell
+//! bar (see [`crate::flyout`]) and its panel slides down out of the bar when
+//! toggled, over whatever window is open. The card follows the launchers of
+//! the HyDE project: a rounded panel with the current wallpaper pinned on top,
+//! a pill search field and accent-highlighted rows.
+//!
+//! It lists every `.desktop` entry GLib knows about, filters them as you type
+//! and launches the highlighted one with [`gio::AppInfo::launch`].
 //!
 //! The two details that matter for a launcher are:
 //!
@@ -13,12 +18,15 @@
 //!    so keys are caught with a controller in the capture phase (before the
 //!    entry sees them), which is how Escape/arrows/Enter are handled.
 
+use std::path::PathBuf;
+
 use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
-use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use relm4::prelude::*;
+
+use crate::flyout;
 
 /// How many results to show at once. The list is rebuilt on every keystroke,
 /// so keeping it bounded keeps typing responsive.
@@ -33,8 +41,11 @@ pub struct LauncherModel {
     selected: usize,
     /// The root, cloned so `update` can show/hide and focus it.
     window: gtk::Window,
+    /// Slides the panel out from under the bar.
+    revealer: gtk::Revealer,
+    /// The wallpaper snapshot in the panel header.
+    banner: flyout::Banner,
     search: gtk::SearchEntry,
-    scrolled: gtk::ScrolledWindow,
     list: gtk::ListBox,
 }
 
@@ -52,54 +63,35 @@ pub enum LauncherInput {
     Activate,
     /// Launch the entry at this position in `matches` (row click).
     Launch(usize),
+    /// The wallpaper changed; repaint the panel header.
+    Banner(Option<PathBuf>),
 }
 
 #[relm4::component(pub)]
 impl SimpleComponent for LauncherModel {
-    type Init = ();
+    type Init = Option<PathBuf>;
     type Input = LauncherInput;
     type Output = ();
 
     view! {
         #[root]
         gtk::Window {
-            set_css_classes: &["mango-launcher"],
+            set_css_classes: &["mango-flyout", "mango-launcher"],
             set_decorated: false,
 
-            gtk::Box {
-                set_css_classes: &["mango-launcher-panel"],
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 10,
-                set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Center,
-
-                append = &model.search.clone() {},
-                append = &model.scrolled.clone() {},
-            }
+            #[wrap(Some)]
+            set_child = &model.revealer.clone() {},
         }
     }
 
     fn init(
-        _init: Self::Init,
+        init: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Layer-shell config must run before the window is realized, and `init`
-        // happens during GTK startup, so this ordering is correct (same as the
-        // bar in `bar.rs`).
-        root.init_layer_shell();
-        root.set_namespace(Some("mango-launcher"));
-        root.set_layer(Layer::Overlay);
-        // Grab keyboard focus while the launcher is up; otherwise keystrokes go
-        // to the window behind it.
-        root.set_keyboard_mode(KeyboardMode::Exclusive);
-        // Fill the screen so the panel is centred on a dimmed backdrop. Child
-        // windows are not presented automatically, so it starts hidden.
-        root.set_anchor(Edge::Top, true);
-        root.set_anchor(Edge::Bottom, true);
-        root.set_anchor(Edge::Left, true);
-        root.set_anchor(Edge::Right, true);
-        root.set_visible(false);
+        // Fly-out surface: hugs the top of the monitor just below the bar,
+        // grabs the keyboard while open, hidden until toggled.
+        flyout::prepare_layer(&root, "mango-launcher");
 
         let apps: Vec<gio::AppInfo> = gio::AppInfo::all()
             .into_iter()
@@ -119,6 +111,21 @@ impl SimpleComponent for LauncherModel {
         scrolled.set_max_content_height(360);
         scrolled.set_propagate_natural_height(true);
         scrolled.set_child(Some(&list));
+
+        // The panel: wallpaper banner, then the search pill and the results.
+        let banner = flyout::make_banner();
+        flyout::set_banner(&banner, init.as_deref());
+
+        let panel = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        panel.add_css_class("mango-launcher-panel");
+        panel.add_css_class("mango-flyout-panel");
+        panel.append(&banner.widget);
+        panel.append(&search);
+        panel.append(&scrolled);
+
+        let revealer = flyout::make_revealer();
+        revealer.set_child(Some(&panel));
+        flyout::wire_hide(&root, &revealer);
 
         // Re-filter on every text change (immediate, unlike `search-changed`
         // which GtkSearchEntry debounces).
@@ -169,31 +176,25 @@ impl SimpleComponent for LauncherModel {
             matches: Vec::new(),
             selected: 0,
             window: root.clone(),
+            revealer,
+            banner,
             search,
-            scrolled,
             list,
         };
 
         let widgets = view_output!();
 
-        // Clicking the dimmed backdrop — anything outside the panel — closes
-        // the launcher. Clicks on rows stay inside the panel, so they pass
-        // through to the list.
-        if let Some(panel) = root.child() {
-            let hide_sender = backdrop_sender;
-            let click = gtk::GestureClick::new();
-            click.connect_pressed(move |_, _, x, y| {
-                let area = panel.allocation();
-                let inside = x >= f64::from(area.x())
-                    && x < f64::from(area.x() + area.width())
-                    && y >= f64::from(area.y())
-                    && y < f64::from(area.y() + area.height());
-                if !inside {
-                    hide_sender.input(LauncherInput::Hide);
-                }
-            });
-            root.add_controller(click);
-        }
+        // Clicking anywhere outside the panel — the transparent fly-out areas
+        // over the open window — closes the launcher. Clicks on rows stay
+        // inside the panel, so they pass through to the list.
+        let click_root = root.clone();
+        let click = gtk::GestureClick::new();
+        click.connect_pressed(move |_, _, x, y| {
+            if !flyout::click_inside(&panel, &click_root, x, y) {
+                backdrop_sender.input(LauncherInput::Hide);
+            }
+        });
+        root.add_controller(click);
 
         // Populate the list for the empty query so it is ready on first open.
         model.refilter("");
@@ -222,22 +223,22 @@ impl SimpleComponent for LauncherModel {
             }
             LauncherInput::Activate => self.launch(self.selected),
             LauncherInput::Launch(position) => self.launch(position),
+            LauncherInput::Banner(path) => flyout::set_banner(&self.banner, path.as_deref()),
         }
     }
 }
 
 impl LauncherModel {
-    /// Reset the query and present the surface.
+    /// Reset the query and slide the panel out of the bar.
     fn show(&mut self) {
         // `set_text` may or may not emit `changed`, so re-filter explicitly.
         self.search.set_text("");
         self.refilter("");
-        self.window.present();
-        self.search.grab_focus();
+        flyout::show(&self.window, &self.revealer, Some(self.search.upcast_ref()));
     }
 
     fn hide(&mut self) {
-        self.window.set_visible(false);
+        flyout::hide(&self.revealer);
     }
 
     /// Recompute `matches` for `query` and rebuild the rows.

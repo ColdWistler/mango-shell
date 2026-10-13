@@ -1,0 +1,38 @@
+/* Tokyo Night (night) — https://github.com/folke/tokyonight.nvim
+ *
+ * Material 3 token overrides layered on top of `src/style.css`. Palette:
+ *   bg           #1a1b26   fg          #c0caf5   blue   #7aa2f7
+ *   bg_dark      #16161e   fg_dark     #a9b1d6   purple #bb9af7
+ *   bg_highlight #292e42   comment     #565f89   green  #9ece6a
+ *   fg_gutter    #3b4261   red         #f7768e
+ */
+
+/* Surfaces. */
+@define-color layer0            rgba(26, 27, 38, 0.85);   /* bg */
+@define-color layer1            rgba(41, 46, 66, 0.72);   /* bg_highlight */
+@define-color layer2            rgba(54, 59, 86, 0.96);
+@define-color layer0_border     rgba(59, 66, 97, 0.55);   /* fg_gutter */
+
+/* Content. */
+@define-color on_surface          #c0caf5;  /* fg */
+@define-color on_surface_variant  #a9b1d6;  /* fg_dark */
+@define-color outline             #565f89;  /* comment */
+@define-color outline_variant     #3b4261;  /* fg_gutter */
+
+/* Accents. */
+@define-color primary             #7aa2f7;  /* blue */
+@define-color on_primary          #1a1b26;
+@define-color primary_container   #2f3b63;
+@define-color on_primary_container #c0caf5;
+@define-color secondary_container #292e42;  /* bg_highlight */
+@define-color on_secondary_container #c0caf5;
+@define-color tertiary_container  #3b4261;  /* fg_gutter */
+@define-color on_tertiary_container #c0caf5;
+
+/* Feedback. */
+@define-color error               #f7768e;  /* red */
+@define-color on_error            #1a1b26;
+@define-color error_container     #7c2f42;
+@define-color on_error_container  #ffd9df;
+
+@define-color scrim               rgba(22, 22, 30, 0.6);

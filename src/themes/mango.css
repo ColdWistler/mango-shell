@@ -1,0 +1,8 @@
+/* Mango — the built-in default.
+ *
+ * This theme deliberately defines nothing: it simply keeps the warm
+ * Material You tokens that already live at the top of `src/style.css`
+ * (they match the Mango config's own `root_color` / `focus_color`). The
+ * other themes are blocks of `@define-color` overrides layered on top, so
+ * this file documents that "no overrides" is a valid theme.
+ */

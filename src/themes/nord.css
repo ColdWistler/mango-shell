@@ -1,0 +1,40 @@
+/* Nord — https://www.nordtheme.com
+ *
+ * A block of Material 3 token overrides layered on top of `src/style.css`.
+ * Only colours are redefined here; every shape and layout rule stays in the
+ * base stylesheet. Palette:
+ *   polar night  #2e3440 #3b4252 #434c5e #4c566a
+ *   snow storm   #d8dee9 #e5e9f0 #eceff4
+ *   frost        #8fbcbb #88c0d0 #81a1c1 #5e81ac
+ *   aurora       #bf616a #d08770 #ebcb8b #a3be8c #b48ead
+ */
+
+/* Surfaces. */
+@define-color layer0            rgba(46, 52, 64, 0.85);
+@define-color layer1            rgba(59, 66, 82, 0.72);
+@define-color layer2            rgba(67, 76, 94, 0.96);
+@define-color layer0_border     rgba(76, 86, 106, 0.65);
+
+/* Content. */
+@define-color on_surface          #eceff4;
+@define-color on_surface_variant  #d8dee9;
+@define-color outline             #7b88a1;
+@define-color outline_variant     #4c566a;
+
+/* Accents. */
+@define-color primary             #88c0d0;
+@define-color on_primary          #2e3440;
+@define-color primary_container   #434c5e;
+@define-color on_primary_container #d8dee9;
+@define-color secondary_container #3b4252;
+@define-color on_secondary_container #e5e9f0;
+@define-color tertiary_container  #5e81ac;
+@define-color on_tertiary_container #eceff4;
+
+/* Feedback. */
+@define-color error               #bf616a;
+@define-color on_error            #2e3440;
+@define-color error_container     #8f3a41;
+@define-color on_error_container  #ffdad6;
+
+@define-color scrim               rgba(20, 23, 29, 0.55);
