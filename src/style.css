@@ -65,6 +65,7 @@ window.mango-bar {
     border-radius: 0;
     border-bottom-left-radius: 23px;
     border-bottom-right-radius: 23px;
+    padding: 0 8px;
 }
 
 /* A rounded cluster of widgets: one pill per group. */
@@ -137,6 +138,31 @@ window.mango-bar button.mango-icon-button:hover {
 
 window.mango-bar button.mango-icon-button:active {
     background-color: alpha(@on_surface, 0.16);
+}
+
+/* --- Panel separators -------------------------------------------------
+ * Drawn between widget clusters by the panel layouts (see src/panel.rs).
+ * Panels can also restyle these through their panel-<id> class. */
+.mango-sep {
+    background-color: alpha(@on_surface_variant, 0.35);
+    min-width: 1px;
+    min-height: 18px;
+    margin: 0 6px;
+    border-radius: 1px;
+}
+
+.mango-sep-block {
+    background-color: @primary;
+    min-width: 6px;
+    min-height: 18px;
+    margin: 0 5px;
+    border-radius: 2px;
+}
+
+.mango-sep-glyph {
+    color: @outline;
+    padding: 0 3px;
+    font-size: 15px;
 }
 
 /* --- Clock ------------------------------------------------------------ */
@@ -496,6 +522,74 @@ flowboxchild.mango-theme-card:selected .mango-theme-check {
 }
 
 flowboxchild.mango-theme-card.current .mango-theme-check {
+    color: @on_primary_container;
+}
+
+/* --- Panel gallery ------------------------------------------------------ */
+
+.mango-panel-panel {
+    min-width: 640px;
+}
+
+.mango-panel-title {
+    color: @on_surface;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 0 4px;
+}
+
+flowbox.mango-panel-grid {
+    background: transparent;
+}
+
+flowboxchild.mango-panel-card {
+    padding: 12px;
+    border-radius: 16px;
+    background-color: alpha(@on_surface, 0.04);
+    transition: background-color 120ms ease;
+}
+
+flowboxchild.mango-panel-card:hover {
+    background-color: alpha(@on_surface, 0.08);
+}
+
+flowboxchild.mango-panel-card:selected {
+    background-color: @secondary_container;
+}
+
+flowboxchild.mango-panel-card.current {
+    background-color: @primary_container;
+}
+
+.mango-panel-name {
+    color: @on_surface;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.mango-panel-blurb {
+    color: @on_surface_variant;
+    font-size: 12px;
+}
+
+.mango-panel-check {
+    color: @primary;
+    -gtk-icon-size: 15px;
+}
+
+flowboxchild.mango-panel-card:selected .mango-panel-name {
+    color: @on_secondary_container;
+}
+
+flowboxchild.mango-panel-card.current .mango-panel-name {
+    color: @on_primary_container;
+}
+
+flowboxchild.mango-panel-card:selected .mango-panel-check {
+    color: @on_secondary_container;
+}
+
+flowboxchild.mango-panel-card.current .mango-panel-check {
     color: @on_primary_container;
 }
 

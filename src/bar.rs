@@ -4,10 +4,15 @@
 //! (`TagsModel`, `ClockModel`, the tray and the system indicators) and
 //! forwards messages between them and the compositor.
 //!
-//! Visually it follows the "hug" layout from pctrade/end4-pC: a full-width
-//! translucent surface with rounded bottom corners, and each cluster of
-//! widgets (launcher, workspaces, clock, status) sitting in its own rounded
-//! pill (`layer 1` on top of `layer 0`). All of that lives in `style.css`.
+//! Which widgets sit where is decided by the active **panel**
+//! ([`crate::panel`]), a layout profile ported from
+//! [adi1090x/polybar-themes](https://github.com/adi1090x/polybar-themes). The
+//! clusters (launcher buttons, tags, clock, tray, system indicators, monitor
+//! name) are built here imperatively, each wrapped the same way as the old
+//! fixed bar, then distributed into the CentreBox slots the panel asked for,
+//! with optional [`Sep`] separators between them. The `panel-<id>` class on
+//! the window lets each panel's CSS restyle everything (pill vs flat blocks,
+//! height, radius, palette).
 
 use gtk::gdk;
 use gtk::prelude::*;
@@ -15,6 +20,7 @@ use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use relm4::prelude::*;
 
 use crate::mango::{self, TagView};
+use crate::panel::{Panel, Sep, Slot};
 use crate::widgets::brightness::BrightnessModel;
 use crate::widgets::clock::ClockModel;
 use crate::widgets::tags::{TagsInput, TagsModel, TagsOutput};
@@ -31,6 +37,8 @@ pub struct BarInit {
     pub monitor: gdk::Monitor,
     /// The theme id active at launch, so the popover checkmark is right.
     pub theme: String,
+    /// The panel (bar layout) this bar is built from.
+    pub panel: &'static Panel,
 }
 
 #[derive(Debug)]
@@ -52,21 +60,35 @@ pub enum BarOutput {
     ToggleWallpaper,
     /// The theme button's gallery row was pressed.
     ToggleThemePicker,
+    /// The panel picker button was pressed.
+    TogglePanelPicker,
+    /// The shortcuts button was pressed.
+    ToggleShortcuts,
     /// A theme was picked in the bar's popover.
     SetTheme(String),
 }
 
 pub struct BarModel {
-    name: String,
-    launcher_button: gtk::Button,
-    wallpaper_button: gtk::Button,
-    theme_button: Controller<ThemeButtonModel>,
     tags: Controller<TagsModel>,
+    // The following components are wired into the slot boxes during `init`;
+    // their Controllers are kept here (and in the view it is enough to hold
+    // the slot boxes) purely so the child components stay alive. Relm4 shuts
+    // a component down when its Controller is dropped.
+    #[allow(dead_code)]
     clock: Controller<ClockModel>,
+    #[allow(dead_code)]
     tray: Controller<TrayModel>,
+    #[allow(dead_code)]
     wifi: Controller<WifiModel>,
+    #[allow(dead_code)]
     volume: Controller<VolumeModel>,
+    #[allow(dead_code)]
     brightness: Controller<BrightnessModel>,
+    theme_button: Controller<ThemeButtonModel>,
+    /// The three CentreBox slots, already populated from the panel layout.
+    start_box: gtk::Box,
+    center_box: gtk::Box,
+    end_box: gtk::Box,
 }
 
 #[relm4::component(pub)]
@@ -83,73 +105,16 @@ impl SimpleComponent for BarModel {
             gtk::CenterBox {
                 set_css_classes: &["mango-bar-surface"],
 
-                // Left: launcher button + the tag (workspace) pills.
+                // The slot boxes are fully built in `init` from the panel
+                // layout, so the declarative part stays this small.
                 #[wrap(Some)]
-                set_start_widget = &gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 6,
-                    set_halign: gtk::Align::Start,
-                    set_valign: gtk::Align::Center,
-                    set_margin_start: 8,
+                set_start_widget = &model.start_box.clone() {},
 
-                    append = &model.launcher_button.clone() {},
-                    append = &model.wallpaper_button.clone() {},
-                    append = &model.theme_button.widget().clone() {},
-
-                    append = &gtk::Box {
-                        set_css_classes: &["mango-group"],
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_halign: gtk::Align::Center,
-                        set_valign: gtk::Align::Center,
-                        append = &model.tags.widget().clone() {},
-                    },
-                },
-
-                // Center: the clock, in its own pill.
                 #[wrap(Some)]
-                set_center_widget = &gtk::Box {
-                    set_css_classes: &["mango-group"],
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_halign: gtk::Align::Center,
-                    set_valign: gtk::Align::Center,
-                    append = &model.clock.widget().clone() {},
-                },
+                set_center_widget = &model.center_box.clone() {},
 
-                // Right: tray, system indicators and the monitor name.
                 #[wrap(Some)]
-                set_end_widget = &gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 6,
-                    set_halign: gtk::Align::End,
-                    set_valign: gtk::Align::Center,
-                    set_margin_end: 8,
-
-                    // Tray icons, in their own pill (it hides itself when empty).
-                    append = &model.tray.widget().clone() {},
-
-                    // Wi-Fi, volume and brightness.
-                    append = &gtk::Box {
-                        set_css_classes: &["mango-group", "mango-system"],
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_halign: gtk::Align::Center,
-                        set_valign: gtk::Align::Center,
-                        append = &model.wifi.widget().clone() {},
-                        append = &model.volume.widget().clone() {},
-                        append = &model.brightness.widget().clone() {},
-                    },
-
-                    // Which monitor this bar belongs to.
-                    append = &gtk::Box {
-                        set_css_classes: &["mango-group"],
-                        set_halign: gtk::Align::Center,
-                        set_valign: gtk::Align::Center,
-                        append = &gtk::Label {
-                            set_css_classes: &["mango-status"],
-                            #[watch]
-                            set_label: &model.name,
-                        },
-                    },
-                },
+                set_end_widget = &model.end_box.clone() {},
             }
         }
     }
@@ -159,6 +124,8 @@ impl SimpleComponent for BarModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let panel = init.panel;
+
         // Turn the window into a top-of-screen bar on `init.monitor` before it
         // is realized.
         root.init_layer_shell();
@@ -172,7 +139,8 @@ impl SimpleComponent for BarModel {
         root.set_anchor(Edge::Right, true);
         root.set_decorated(false);
 
-        // The launcher lives in the shell, so the bar just reports the click.
+        // The launcher, wallpaper picker and panel picker all live in the
+        // shell, so the bar just reports their clicks.
         let launcher_button = gtk::Button::new();
         launcher_button.set_css_classes(&["mango-icon-button"]);
         launcher_button.set_tooltip_text(Some("Applications"));
@@ -182,7 +150,6 @@ impl SimpleComponent for BarModel {
             let _ = click_sender.output(BarOutput::ToggleLauncher);
         });
 
-        // The wallpaper picker also lives in the shell.
         let wallpaper_button = gtk::Button::new();
         wallpaper_button.set_css_classes(&["mango-icon-button"]);
         wallpaper_button.set_tooltip_text(Some("Wallpaper"));
@@ -192,6 +159,15 @@ impl SimpleComponent for BarModel {
         let wallpaper_sender = sender.clone();
         wallpaper_button.connect_clicked(move |_| {
             let _ = wallpaper_sender.output(BarOutput::ToggleWallpaper);
+        });
+
+        let panels_button = gtk::Button::new();
+        panels_button.set_css_classes(&["mango-icon-button"]);
+        panels_button.set_tooltip_text(Some("Panel layout"));
+        panels_button.set_child(Some(&gtk::Image::from_icon_name("view-grid-symbolic")));
+        let panels_sender = sender.clone();
+        panels_button.connect_clicked(move |_| {
+            let _ = panels_sender.output(BarOutput::TogglePanelPicker);
         });
 
         let tags = TagsModel::builder()
@@ -212,20 +188,92 @@ impl SimpleComponent for BarModel {
             },
         );
 
+        // --- Build the clusters exactly like the old fixed bar did, so every
+        // panel starts from the same building blocks and CSS handles the
+        // rest. ----------------------------------------------------------
+
+        // The launcher/wallpaper/theme/panel buttons sit together, bare.
+        let apps = horizontal_cluster(&[], 6, gtk::Align::Center);
+        apps.append(&launcher_button);
+        apps.append(&wallpaper_button);
+        apps.append(theme_button.widget());
+        apps.append(&panels_button);
+
+        // Workspace pills.
+        let tags_cluster = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
+        tags_cluster.append(tags.widget());
+
+        // The clock in its own pill.
+        let clock_cluster = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
+        clock_cluster.append(clock.widget());
+
+        // The tray brings its own `.mango-group` (and hides itself when
+        // empty), so it is appended as-is.
+        let tray_widget = tray.widget().clone().upcast::<gtk::Widget>();
+
+        // Wi-Fi, volume and brightness in one pill.
+        let system_cluster =
+            horizontal_cluster(&["mango-group", "mango-system"], 0, gtk::Align::Center);
+        system_cluster.append(wifi.widget());
+        system_cluster.append(volume.widget());
+        system_cluster.append(brightness.widget());
+
+        // Which monitor this bar belongs to.
+        let desk_cluster = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
+        let name_label = gtk::Label::new(Some(&init.name));
+        name_label.add_css_class("mango-status");
+        desk_cluster.append(&name_label);
+
+        // --- Distribute them into the slots the panel asked for. ----------
+        let members: Vec<(Slot, gtk::Widget)> = vec![
+            (panel.apps, apps.upcast()),
+            (panel.tags, tags_cluster.upcast()),
+            (panel.clock, clock_cluster.upcast()),
+            (panel.tray, tray_widget),
+            (panel.system, system_cluster.upcast()),
+            (panel.desk, desk_cluster.upcast()),
+        ];
+
+        let mut start = Vec::new();
+        let mut center = Vec::new();
+        let mut end = Vec::new();
+        for (slot, widget) in members {
+            match slot {
+                Slot::Start => start.push(widget),
+                Slot::Center => center.push(widget),
+                Slot::End => end.push(widget),
+            }
+        }
+
+        let start_box = assemble_slot("mango-slot-start", start, panel.sep, gtk::Align::Start);
+        let center_box = assemble_slot("mango-slot-center", center, panel.sep, gtk::Align::Center);
+        let end_box = assemble_slot("mango-slot-end", end, panel.sep, gtk::Align::End);
+
         let model = BarModel {
-            name: init.name,
-            launcher_button,
-            wallpaper_button,
-            theme_button,
             tags,
             clock,
             tray,
             wifi,
             volume,
             brightness,
+            theme_button,
+            start_box,
+            center_box,
+            end_box,
         };
 
         let widgets = view_output!();
+
+        // The panel's CSS profile is scoped to `panel-<id>`. It is added
+        // after `view_output!` because the view macro replaces the css classes
+        // list on the root.
+        root.add_css_class(&format!("panel-{}", panel.id));
+
+        // Floating panels inset themselves from the top and the screen edges
+        // (full-width panels have `margin_side == 0`).
+        root.set_margin(Edge::Top, panel.margin_top);
+        root.set_margin(Edge::Left, panel.margin_side);
+        root.set_margin(Edge::Right, panel.margin_side);
 
         // Child windows are not presented automatically.
         root.set_visible(true);
@@ -238,6 +286,57 @@ impl SimpleComponent for BarModel {
             BarInput::SetTags(tags) => self.tags.emit(TagsInput::Set(tags)),
             BarInput::SwitchTag(TagsOutput::Switch(index)) => mango::switch_tag(index),
             BarInput::SetTheme(id) => self.theme_button.emit(ThemeButtonInput::SetTheme(id)),
+        }
+    }
+}
+
+/// A horizontal box with the given CSS classes, centred vertically so the
+/// clusters line up in a short bar.
+fn horizontal_cluster(classes: &[&str], spacing: i32, halign: gtk::Align) -> gtk::Box {
+    let cluster = gtk::Box::new(gtk::Orientation::Horizontal, spacing);
+    cluster.set_css_classes(classes);
+    cluster.set_halign(halign);
+    cluster.set_valign(gtk::Align::Center);
+    cluster
+}
+
+/// Chain `members` into one slot box with 6px spacing and `panel.sep`
+/// separators between consecutive members.
+fn assemble_slot(class: &str, members: Vec<gtk::Widget>, sep: Sep, halign: gtk::Align) -> gtk::Box {
+    let slot = horizontal_cluster(&[class], 6, halign);
+    for (index, member) in members.iter().enumerate() {
+        if index > 0
+            && let Some(separator) = separator(sep)
+        {
+            slot.append(&separator);
+        }
+        slot.append(member);
+    }
+    slot
+}
+
+/// The separator widget for a [`Sep`] style, if it has one.
+fn separator(sep: Sep) -> Option<gtk::Widget> {
+    match sep {
+        Sep::None => None,
+        Sep::Line => {
+            // A plain box: `GtkSeparator` is drawn by the theme and ignores
+            // `background-color`, so a 1px box is the reliable hairline.
+            let line = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            line.add_css_class("mango-sep");
+            line.set_valign(gtk::Align::Center);
+            Some(line.upcast())
+        }
+        Sep::Block => {
+            let block = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            block.add_css_class("mango-sep-block");
+            block.set_valign(gtk::Align::Center);
+            Some(block.upcast())
+        }
+        Sep::Glyph(glyph) => {
+            let label = gtk::Label::new(Some(glyph));
+            label.add_css_class("mango-sep-glyph");
+            Some(label.upcast())
         }
     }
 }

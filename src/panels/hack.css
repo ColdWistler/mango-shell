@@ -1,0 +1,64 @@
+/* Hack — ported from adi1090x/polybar-themes (simple/hack).
+ *
+ * A thin, terminal-style bar modelled on hack's top bar: dark blue-grey, no
+ * pill backgrounds, a cyan underline, and the workspaces pushed to the
+ * centre while the launcher hugs the left edge.
+ */
+
+@define-color layer0            rgba(38, 50, 56, 0.97);
+@define-color layer1            rgba(0, 188, 212, 0.10);
+@define-color layer2            rgba(30, 40, 45, 0.98);
+@define-color layer0_border     rgba(0, 188, 212, 0.30);
+
+@define-color on_surface          #dfdfdf;
+@define-color on_surface_variant  #90a4ae;
+@define-color outline             #607d8b;
+@define-color outline_variant     #37474f;
+
+@define-color primary             #00bcd4;
+@define-color on_primary          #263238;
+@define-color primary_container   rgba(0, 188, 212, 0.25);
+@define-color on_primary_container #e0f7fa;
+@define-color secondary_container rgba(0, 188, 212, 0.18);
+@define-color on_secondary_container #dfdfdf;
+@define-color tertiary_container  rgba(0, 150, 136, 0.20);
+@define-color on_tertiary_container #e0f2f1;
+
+@define-color error               #ff5250;
+@define-color on_error            #263238;
+@define-color error_container     rgba(255, 82, 80, 0.30);
+@define-color on_error_container  #ffdad6;
+
+@define-color scrim               rgba(0, 0, 0, 0.45);
+
+/* Structure: a short bar with the primary as a clear underline; clusters are
+ * transparent with hairline separators between them. */
+window.mango-bar.panel-hack {
+    min-height: 26px;
+    font-family: "Iosevka Nerd Font", "Iosevka", "Cascadia Mono", "DejaVu Sans Mono", monospace;
+    font-size: 13px;
+}
+
+window.mango-bar.panel-hack .mango-bar-surface {
+    min-height: 26px;
+    border: none;
+    border-radius: 0;
+    border-bottom: 2px solid @primary;
+}
+
+window.mango-bar.panel-hack .mango-group {
+    background: transparent;
+    border-radius: 0;
+    padding: 0 4px;
+    min-height: 22px;
+}
+
+window.mango-bar.panel-hack button.mango-tag {
+    min-width: 20px;
+    min-height: 20px;
+}
+
+window.mango-bar.panel-hack .mango-widget {
+    min-height: 22px;
+    font-size: 12px;
+}
