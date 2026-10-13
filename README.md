@@ -74,6 +74,39 @@ against each palette before closing it. The choice is written to
 > Adding a theme is just an extra `${id}.css` file in `src/themes/` plus one
 > entry in [`src/theme.rs`](src/theme.rs).
 
+### Panels
+
+The bar's **layout** is configurable too. A *panel* is a ported polybar theme
+(from [adi1090x/polybar-themes](https://github.com/adi1090x/polybar-themes)):
+it decides the bar height, whether it floats or spans the full width, which
+widget clusters (launcher buttons, workspace tags, clock, tray, indicators,
+monitor name) sit on the left/centre/right, and whether they look like pills,
+flat blocks or hairline-separated groups — plus a *default palette*. Panels
+and themes compose: the active colour theme overrides the panel's palette, so
+you can run, say, the Cuts layout recoloured in Gruvbox.
+
+The round **panel button** in the bar (the grid icon, next to the wallpaper
+button) opens the **panel gallery**: a fly-out of bar mocks, each card showing
+a live preview of the layout (arrow keys to move, Enter to apply,
+Escape/backdrop to close). The choice is written to
+`~/.config/mango-shell/panel` and restored on the next start.
+
+The shipped panels cover the distinct polybar layout families:
+
+| Panel | Polybar original | Look |
+| --- | --- | --- |
+| Mango (hug) | — (built-in default) | full-width, rounded bottom, pill clusters |
+| Material | `material` | floating fully-rounded bar, amber accent |
+| Shades | `shades` | full-width flat bar, blue shades, hairlines |
+| Cuts | `cuts` | thin sharp bar, yellow accent, block separators |
+| Blocks | `blocks` / `colorblocks` / `grayblocks` / `forest` | light blocks on a dark bar, monitor name centred |
+| Docky | `docky` | floating pill dock with a red underline |
+| Hack | `hack` | thin terminal-style bar, cyan underline, tags centred |
+
+> Adding a panel is a small block of CSS in `src/panels/<id>.css` (default
+> palette + structural rules scoped to the `panel-<id>` class) plus one entry
+> in [`src/panel.rs`](src/panel.rs) describing the slots, height and margins.
+
 ### Theming it to your wallpaper
 
 end4 derives its palette from the wallpaper (via matugen). This shell does the
@@ -219,11 +252,11 @@ button, or from a keybind:
 bind=SUPER,w,spawn,pkill -SIGUSR2 mango-shell
 ```
 
-Click a thumbnail to apply it live — the panel stays open so you can flip
-through them; type to filter by file name, arrow keys move the highlight and
-Enter applies it. `Escape`, a click outside the panel, or the toggle again
-closes it. The choice is written to `~/.config/mango-shell/wallpaper` and
-restored the next time the shell starts.
+Click a thumbnail (or press Enter) to apply it — the picker closes on
+selection so the new wallpaper is revealed at once; type to filter by file
+name and arrow keys move the highlight. `Escape`, a click outside the panel,
+or the toggle again closes it without choosing. The choice is written to
+`~/.config/mango-shell/wallpaper` and restored the next time the shell starts.
 
 Previews are decoded on a background thread. `GdkPixbuf` is not `Send` and
 `gdk::MemoryTexture` may only be built on the main thread, so each image is
@@ -285,13 +318,14 @@ NetworkManager and systemd, which a Mango session already has.
 src/
   main.rs           Shell: one invisible 1x1 layer surface. Watches monitors,
                     owns the Mango IPC feed, spawns one bar + wallpaper surface
-                    per monitor, and loads the stylesheet (defaults + theme +
-                    optional user override, reloaded when the theme or
-                    wallpaper changes).
-  bar.rs            BarModel: one Top-layer layer surface per monitor. Holds
-                    the widget components and lays them out in a CenterBox,
-                    each cluster wrapped in a `.mango-group` pill. Its buttons
-                    forward launcher/wallpaper/theme toggles to the shell.
+                    per monitor, and loads the stylesheet (defaults + panel +
+                    theme + optional user override, reloaded when the theme,
+                    panel or wallpaper changes).
+  bar.rs            BarModel: one Top-layer layer surface per monitor. Builds
+                    the widget clusters and distributes them into the three
+                    CentreBox slots according to the active panel (src/panel.rs).
+                    Its buttons forward launcher/wallpaper/theme/panel toggles
+                    to the shell.
   flyout.rs         Shared recipe for the launcher/wallpaper/theme "fly-outs":
                     an Overlay-layer panel that hangs under the bar and slides
                     out of it (a GtkRevealer), plus the wallpaper banner header.
@@ -307,10 +341,18 @@ src/
                     (~/.config/mango-shell/theme) and ThemePickerModel, a
                     fly-out gallery of palette cards opened from the bar's
                     theme menu.
+  panel.rs          Panels (Panel/PANELS): bar-layout profiles ported from
+                    adi1090x/polybar-themes, persistence
+                    (~/.config/mango-shell/panel) and PanelPickerModel, a
+                    fly-out gallery of bar-layout mocks opened from the bar's
+                    panel button.
   mango.rs          Mango IPC: TagView, monitor stream, tag dispatch.
   themes/           `@define-color` override blocks per theme; the shell
-                    splices the active one between style.css and the user
+                    splices the active one between the panel CSS and the user
                     override.
+  panels/           `@define-color` palette + structural CSS per panel,
+                    scoped to the `panel-<id>` class on the bar window; the
+                    active one is spliced between style.css and the theme.
   widgets/
     clock.rs        ClockModel: date • time, 1 Hz timer.
     tags.rs         TagsModel: clickable tag buttons (occupied/active/urgent).
@@ -322,8 +364,9 @@ src/
     tray.rs         TrayModel: StatusNotifierItem host + DBusMenu popover.
   style.css         Base Material 3 theme (shapes + default tokens), loaded
                     into a custom CssProvider so it can be reloaded live. The
-                    selected theme's tokens and any user stylesheet are
-                    appended after it, in that order of precedence.
+                    selected panel's CSS, theme's tokens and any user
+                    stylesheet are appended after it, in that order of
+                    precedence.
 ```
 
 ### The two things that actually matter
@@ -377,19 +420,24 @@ Notable differences, and why:
   trick OkShell uses in `frame.rs` to drop child-component widgets into a view.
 - **No config system or service layer yet.** OkShell has `okshell-config`
   (reactive `reactive_graph` stores) and `okshell-services`. That is the
-  natural next step, but it is a lot of machinery for a starter. Theming is
-  covered more simply: built-in `@define-color` themes plus an optional user
-  stylesheet, all spliced into one `CssProvider` (see `src/theme.rs`).
+  natural next step, but it is a lot of machinery for a starter. Theming and
+  layout are covered more simply: built-in `@define-color` themes, ported
+  panel layouts, plus an optional user stylesheet, all spliced into one
+  `CssProvider` (see `src/theme.rs` and `src/panel.rs`).
 
 ---
 
 ## 5. Next steps / ideas
 
-- **Configure it.** Add a config file (TOML) to tune the theme list, bar
+- **Configure it.** Add a config file (TOML) to tune the theme/panel list, bar
   height and behaviour, instead of hardcoding them.
 - **More themes.** Add a `${id}.css` in `src/themes/` plus a `THEMES` entry,
   or wire up `matugen`/pywal palettes (the optional user stylesheet already
   layers on top of any theme).
+- **More panels.** Add a `${id}.css` in `src/panels/` plus a `PANELS` entry to
+  port another polybar layout (the remaining `simple/` themes are `shapes`,
+  `forest`, `panels` and `pwidgets`; `panels` and `pwidgets` need extra
+  widget types before they map cleanly onto a single top bar).
 - **More modules.** Battery (UPower), media player (MPRIS), notifications,
   keyboard layout, a power/session menu. (Wi-Fi, volume, brightness and the
   system tray are already in `widgets/`.)

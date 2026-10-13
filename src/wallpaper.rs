@@ -571,13 +571,17 @@ impl WallpaperPickerModel {
         self.refresh_status();
     }
 
-    /// Mark `path` as the active wallpaper and emit it upwards.
+    /// Mark `path` as the active wallpaper, emit it upwards and close the
+    /// picker so the freshly chosen wallpaper is revealed. Both the grid click
+    /// and Enter funnel through here, matching the launcher, which hides once
+    /// an application is launched.
     fn apply(&mut self, index: usize, sender: &ComponentSender<Self>) {
         let Some(path) = self.images.get(index).cloned() else {
             return;
         };
         self.set_current(path.clone());
         let _ = sender.output(WallpaperOutput::Apply(path));
+        self.hide();
     }
 
     fn set_current(&mut self, path: PathBuf) {

@@ -1,0 +1,78 @@
+/* Blocks — ported from adi1090x/polybar-themes (simple/blocks).
+ *
+ * The signature "blocks" look: a dark bar holding light, softly-rounded
+ * blocks. Text on the blocks is dark; the accent is a light lime and the
+ * monitor name sits dead centre where polybar parked its title.
+ */
+
+@define-color layer0            rgba(47, 52, 63, 0.97);
+@define-color layer1            #c4c7c5;
+@define-color layer2            rgba(38, 42, 51, 0.98);
+@define-color layer0_border     rgba(0, 0, 0, 0.0);
+
+@define-color on_surface          #1c1e20;
+@define-color on_surface_variant  #2f343f;
+@define-color outline             #5f6b7a;
+@define-color outline_variant     #4a4f5a;
+
+@define-color primary             #b4bc67;
+@define-color on_primary          #1c1e20;
+@define-color primary_container   #b4bc67;
+@define-color on_primary_container #1c1e20;
+@define-color secondary_container #9e9e9e;
+@define-color on_secondary_container #1c1e20;
+@define-color tertiary_container  #75a4cd;
+@define-color on_tertiary_container #1c1e20;
+
+@define-color error               #ec7875;
+@define-color on_error            #1c1e20;
+@define-color error_container     #ec7875;
+@define-color on_error_container  #1c1e20;
+
+@define-color scrim               rgba(0, 0, 0, 0.45);
+
+/* Structure: the clusters become light blocks; icon buttons pick up the same
+ * block look so nothing floats in the void on the dark bar. */
+window.mango-bar.panel-blocks {
+    min-height: 34px;
+}
+
+window.mango-bar.panel-blocks .mango-bar-surface {
+    min-height: 34px;
+    border: none;
+    border-radius: 0;
+}
+
+window.mango-bar.panel-blocks .mango-group {
+    background-color: @layer1;
+    border-radius: 6px;
+    padding: 0 8px;
+    min-height: 26px;
+}
+
+window.mango-bar.panel-blocks button.mango-icon-button {
+    background-color: @layer1;
+    color: @on_surface;
+}
+
+window.mango-bar.panel-blocks button.mango-icon-button:hover {
+    background-color: alpha(@on_surface, 0.14);
+    color: @on_surface;
+}
+
+/* Inside the light blocks, text and icons are dark. */
+window.mango-bar.panel-blocks .mango-group label,
+window.mango-bar.panel-blocks .mango-widget,
+window.mango-bar.panel-blocks .mango-widget-static {
+    color: @on_surface;
+}
+
+window.mango-bar.panel-blocks button.mango-widget:hover {
+    background-color: alpha(@on_surface, 0.14);
+    color: @on_surface;
+}
+
+window.mango-bar.panel-blocks .mango-clock-sep,
+window.mango-bar.panel-blocks .mango-status {
+    color: @on_surface_variant;
+}

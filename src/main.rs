@@ -16,6 +16,10 @@
 //!                                          (SIGUSR2)
 //!   +-- ThemePickerModel     (theme.rs)     theme gallery, same fly-out panel,
 //!                                          opened from the bar's theme menu
+//!   +-- PanelPickerModel     (panel.rs)     panel/layout gallery, same fly-out,
+//!                                          opened from the bar's panel button
+//!   +-- ShortcutsModel       (shortcuts.rs) keyboard-shortcut reference, same
+//!                                          fly-out, opened from the bar
 //! ```
 //!
 //! Why the invisible root? A GTK application needs a window to stay alive, and
@@ -26,6 +30,8 @@ mod bar;
 mod flyout;
 mod launcher;
 mod mango;
+mod panel;
+mod shortcuts;
 mod theme;
 mod wallpaper;
 mod widgets;
@@ -38,7 +44,9 @@ use gtk::gdk;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use launcher::{LauncherInput, LauncherModel};
+use panel::{PanelOutput, PanelPickerInput, PanelPickerModel};
 use relm4::prelude::*;
+use shortcuts::{ShortcutsInput, ShortcutsModel};
 use theme::{ThemeOutput, ThemePickerInput, ThemePickerModel};
 use wallpaper::{
     WallpaperInit, WallpaperInput, WallpaperModel, WallpaperOutput, WallpaperPickerInput,
@@ -57,10 +65,18 @@ struct Shell {
     picker: Controller<WallpaperPickerModel>,
     /// The gallery you can open from the bar's theme menu.
     theme_picker: Controller<ThemePickerModel>,
+    /// The panel gallery, opened from the bar's panel button.
+    panel_picker: Controller<PanelPickerModel>,
+    /// The keyboard-shortcut reference, opened from the bar.
+    shortcuts: Controller<ShortcutsModel>,
     /// The wallpaper currently shown, restored from disk at startup.
     current: Option<PathBuf>,
     /// The active theme, restored from disk at startup.
     theme: &'static theme::Theme,
+    /// The active panel (bar layout), restored from disk at startup.
+    panel: &'static panel::Panel,
+    /// The last tag state per monitor, so rebuilt bars can be repopulated.
+    tags: HashMap<String, Vec<TagView>>,
     /// The global stylesheet, kept so the theme can be reloaded in place.
     css: gtk::CssProvider,
 }
@@ -81,8 +97,14 @@ enum ShellInput {
     ToggleWallpaper,
     /// Show/hide the theme gallery (sent by the theme menu in the bar).
     ToggleTheme,
+    /// Show/hide the panel gallery (sent by the panel button in the bar).
+    TogglePanel,
+    /// Show/hide the keyboard-shortcut reference (sent by the bar button).
+    ToggleShortcuts,
     /// Apply and remember this theme, reloading the stylesheet.
     SetTheme(String),
+    /// Apply and remember this panel, rebuilding every bar.
+    SetPanel(String),
     /// Remember and show this wallpaper everywhere.
     SetWallpaper(PathBuf),
     /// Re-read `style.css` after a wallpaper change regenerated it.
@@ -118,8 +140,9 @@ impl SimpleComponent for Shell {
         // in place when the theme — or the wallpaper, and therefore the
         // palette — changes.
         let theme = theme::load_current();
+        let panel = panel::load_current();
         let css = gtk::CssProvider::new();
-        css.load_from_data(&load_css(theme));
+        css.load_from_data(&load_css(panel, theme));
         if let Some(display) = gdk::Display::default() {
             gtk::style_context_add_provider_for_display(
                 &display,
@@ -160,18 +183,40 @@ impl SimpleComponent for Shell {
             });
         theme_picker.emit(ThemePickerInput::Banner(current.clone()));
 
+        // The panel gallery is yet another shared overlay: a mock of each
+        // ported panel layout. Picking one rebuilds every bar.
+        let panel_picker = PanelPickerModel::builder()
+            .launch(panel.id.to_string())
+            .forward(sender.input_sender(), |output| match output {
+                PanelOutput::Apply(id) => ShellInput::SetPanel(id),
+            });
+
+        // The keyboard-shortcut reference is read-only, but it shares the
+        // fly-out recipe (and the wallpaper banner). It re-parses Mango's
+        // config each time it opens.
+        let shortcuts = ShortcutsModel::builder().launch(current.clone()).detach();
+
         let model = Shell {
             bars: HashMap::new(),
             wallpapers: HashMap::new(),
             launcher,
             picker,
             theme_picker,
+            panel_picker,
+            shortcuts,
             current,
             theme,
+            panel,
+            tags: HashMap::new(),
             css,
         };
 
         let widgets = view_output!();
+
+        // Make the fly-outs hang just below the panel's bar. They default to
+        // `flyout::BAR_GAP`, which assumes the original 40px bar; when a
+        // panel floats or is thin, the gap must follow it.
+        set_flyout_gap(&model, model.panel);
 
         setup_monitor_watcher(&sender);
         sync_monitors(&model.bars, &sender);
@@ -197,6 +242,7 @@ impl SimpleComponent for Shell {
                         name: name.clone(),
                         monitor: monitor.clone(),
                         theme: self.theme.id.to_string(),
+                        panel: self.panel,
                     })
                     // The bar's buttons toggle the shell's overlays, and its
                     // theme menu applies themes.
@@ -204,6 +250,8 @@ impl SimpleComponent for Shell {
                         BarOutput::ToggleLauncher => ShellInput::ToggleLauncher,
                         BarOutput::ToggleWallpaper => ShellInput::ToggleWallpaper,
                         BarOutput::ToggleThemePicker => ShellInput::ToggleTheme,
+                        BarOutput::TogglePanelPicker => ShellInput::TogglePanel,
+                        BarOutput::ToggleShortcuts => ShellInput::ToggleShortcuts,
                         BarOutput::SetTheme(id) => ShellInput::SetTheme(id),
                     });
                 // One background surface per monitor, showing the current
@@ -215,7 +263,15 @@ impl SimpleComponent for Shell {
                     })
                     .detach();
                 self.bars.insert(name.clone(), bar);
-                self.wallpapers.insert(name, wallpaper);
+                self.wallpapers.insert(name.clone(), wallpaper);
+                // A freshly built bar starts empty; repopulate its tags from
+                // the last known state (e.g. right after a panel switch).
+                if let Some(tags) = self.tags.get(&name) {
+                    self.bars
+                        .get(&name)
+                        .expect("bar just inserted")
+                        .emit(BarInput::SetTags(tags.clone()));
+                }
             }
 
             ShellInput::RemoveMonitor(name) => {
@@ -230,6 +286,7 @@ impl SimpleComponent for Shell {
             }
 
             ShellInput::MangoUpdate(update) => {
+                self.tags = update.clone();
                 for (name, tags) in update {
                     if let Some(controller) = self.bars.get(&name) {
                         controller.emit(BarInput::SetTags(tags));
@@ -243,6 +300,10 @@ impl SimpleComponent for Shell {
 
             ShellInput::ToggleTheme => self.theme_picker.emit(ThemePickerInput::Toggle),
 
+            ShellInput::TogglePanel => self.panel_picker.emit(PanelPickerInput::Toggle),
+
+            ShellInput::ToggleShortcuts => self.shortcuts.emit(ShortcutsInput::Toggle),
+
             ShellInput::SetTheme(id) => {
                 if !theme::is_known(&id) {
                     return;
@@ -252,7 +313,8 @@ impl SimpleComponent for Shell {
                 // Reload the whole stylesheet: the theme's token overrides are
                 // spliced into the string the provider was built from.
                 let theme = self.theme;
-                self.css.load_from_data(&load_css(theme));
+                let panel = self.panel;
+                self.css.load_from_data(&load_css(panel, theme));
                 // Keep the gallery highlight...
                 self.theme_picker
                     .emit(ThemePickerInput::SetCurrent(id.clone()));
@@ -260,6 +322,31 @@ impl SimpleComponent for Shell {
                 for controller in self.bars.values() {
                     controller.emit(BarInput::SetTheme(id.clone()));
                 }
+            }
+
+            ShellInput::SetPanel(id) => {
+                if !panel::is_known(&id) {
+                    return;
+                }
+                panel::save_current(&id);
+                self.panel = panel::get(&id);
+                // Reload the stylesheet so the panel's CSS profile (palette +
+                // structure) applies.
+                let panel = self.panel;
+                let theme = self.theme;
+                self.css.load_from_data(&load_css(panel, theme));
+                // Keep the gallery highlight in sync.
+                self.panel_picker
+                    .emit(PanelPickerInput::SetCurrent(id.clone()));
+                // The bar may float or shrink, so keep the fly-outs hanging
+                // just below it.
+                set_flyout_gap(self, self.panel);
+                // Rebuild every bar from the new layout. The wallpaper
+                // surfaces are untouched.
+                for (_, controller) in self.bars.drain() {
+                    controller.widget().set_visible(false);
+                }
+                sync_monitors(&self.bars, &sender);
             }
 
             ShellInput::SetWallpaper(path) => {
@@ -279,6 +366,8 @@ impl SimpleComponent for Shell {
                     .emit(LauncherInput::Banner(Some(path.clone())));
                 self.theme_picker
                     .emit(ThemePickerInput::Banner(Some(path.clone())));
+                self.shortcuts
+                    .emit(ShortcutsInput::Banner(Some(path.clone())));
                 // Let an optional hook (matugen, pywal, …) re-derive the
                 // palette, then reload the stylesheet once it finishes.
                 let sender = sender.clone();
@@ -288,7 +377,7 @@ impl SimpleComponent for Shell {
                 });
             }
 
-            ShellInput::ReloadCss => self.css.load_from_data(&load_css(self.theme)),
+            ShellInput::ReloadCss => self.css.load_from_data(&load_css(self.panel, self.theme)),
         }
     }
 }
@@ -389,16 +478,40 @@ fn find_monitor(name: &str) -> Option<gdk::Monitor> {
     None
 }
 
+/// Keep the fly-out surfaces (launcher, wallpaper picker, theme and panel
+/// galleries, shortcut reference) hanging just below the active panel's bar.
+/// Each panel has its own height and may float, so the gap must follow it when
+/// the panel changes.
+fn set_flyout_gap(shell: &Shell, panel: &panel::Panel) {
+    let gap = panel.flyout_gap();
+    for window in [
+        shell.launcher.widget(),
+        shell.picker.widget(),
+        shell.theme_picker.widget(),
+        shell.panel_picker.widget(),
+        shell.shortcuts.widget(),
+    ] {
+        window.set_margin(Edge::Top, gap);
+    }
+}
+
 /// Build the stylesheet the shell loads: the built-in defaults, then the
-/// selected theme's token overrides, then an optional user override on top.
+/// selected **panel**'s CSS profile (its default palette + structural rules),
+/// then the selected theme's token overrides, then an optional user override
+/// on top.
 ///
 /// The override lives at `~/.config/mango-shell/style.css` and is meant for
 /// `@define-color` tokens, which is how you tint the shell to the wallpaper
-/// (the way end4-pC does with matugen). It sits after the theme, so a
-/// wallpaper-derived palette always wins. Keeping everything in one appended
-/// string means no extra provider-priority plumbing.
-fn load_css(theme: &theme::Theme) -> String {
+/// (the way end4-pC does with matugen). It sits after everything, so a
+/// wallpaper-derived palette always wins. Panels define `@define-color`
+/// tokens too, but the theme is appended *after* them, so picking e.g.
+/// Gruvbox recolours any panel — panels supply the default palette, themes
+/// the override.
+fn load_css(panel: &panel::Panel, theme: &theme::Theme) -> String {
     let mut css = String::from(include_str!("style.css"));
+
+    css.push('\n');
+    css.push_str(panel.css);
 
     css.push('\n');
     css.push_str(theme.css);

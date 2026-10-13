@@ -1,0 +1,14 @@
+/* Mango "hug" — the default panel.
+ *
+ * This is the original bar: a full-width surface with rounded bottom corners
+ * and each widget cluster sitting in its own `layer 1` pill. It deliberately
+ * defines no palette tokens, keeping the warm Material You defaults that
+ * already live at the top of `src/style.css`.
+ */
+window.mango-bar.panel-hug {
+    min-height: 40px;
+}
+
+window.mango-bar.panel-hug .mango-bar-surface {
+    min-height: 40px;
+}
