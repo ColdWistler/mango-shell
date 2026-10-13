@@ -55,7 +55,7 @@ impl SimpleComponent for ClockModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let mut model = ClockModel {
-            time: now("%H:%M"),
+            time: now("%I:%M %p"),
             date: now("%a, %d/%m"),
             timer: None,
         };
@@ -73,7 +73,7 @@ impl SimpleComponent for ClockModel {
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         match msg {
             ClockInput::Tick => {
-                self.time = now("%H:%M");
+                self.time = now("%I:%M %p");
                 self.date = now("%a, %d/%m");
             }
         }

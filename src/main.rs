@@ -243,6 +243,8 @@ impl SimpleComponent for Shell {
                         monitor: monitor.clone(),
                         theme: self.theme.id.to_string(),
                         panel: self.panel,
+                        // Get layout symbol from IPC query
+                        layout: "Tiled".to_string(),
                     })
                     // The bar's buttons toggle the shell's overlays, and its
                     // theme menu applies themes.

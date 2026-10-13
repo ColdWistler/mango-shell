@@ -65,7 +65,7 @@ window.mango-bar {
     border-radius: 0;
     border-bottom-left-radius: 23px;
     border-bottom-right-radius: 23px;
-    padding: 0 8px;
+    padding: 0 8px 4px 8px;
 }
 
 /* A rounded cluster of widgets: one pill per group. */

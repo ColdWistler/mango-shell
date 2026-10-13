@@ -39,6 +39,8 @@ pub struct BarInit {
     pub theme: String,
     /// The panel (bar layout) this bar is built from.
     pub panel: &'static Panel,
+    /// The layout symbol for this monitor (e.g. "Tiled", "Scroller", "Monocle").
+    pub layout: String,
 }
 
 #[derive(Debug)]
@@ -220,7 +222,7 @@ impl SimpleComponent for BarModel {
 
         // Which monitor this bar belongs to.
         let desk_cluster = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
-        let name_label = gtk::Label::new(Some(&init.name));
+        let name_label = gtk::Label::new(Some(&init.layout));
         name_label.add_css_class("mango-status");
         desk_cluster.append(&name_label);
 
