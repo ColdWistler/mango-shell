@@ -313,7 +313,7 @@ window.mango-wallpaper {
     background-image: none;
 }
 
-/* --- Fly-out applets (launcher, wallpaper picker, theme gallery) ------ */
+/* --- Fly-out applets (launcher, theme and panel galleries) ------------ */
 
 /* Each applet is a panel that hangs just below the bar instead of covering
  * the screen: an Overlay-layer surface that is transparent except for the
@@ -349,7 +349,7 @@ window.mango-flyout > revealer {
     background-color: alpha(@on_surface, 0.06);
 }
 
-/* Pill search field shared by the launcher and the wallpaper picker. */
+/* Pill search field shared by the launcher and the galleries. */
 window.mango-flyout entry {
     background-image: none;
     background-color: alpha(@on_surface, 0.06);
@@ -421,50 +421,69 @@ window.mango-flyout row:selected label {
     font-weight: 600;
 }
 
-/* --- Wallpaper picker -------------------------------------------------- */
+/* --- Wallpaper carousel ------------------------------------------------ */
 
-.mango-picker-panel {
-    min-width: 900px;
-}
+/* A fullscreen overlay ported from DankMaterialShell's wallpaperCarousel
+ * plugin: a skewed 3D carousel of wallpapers floating over a transparent
+ * backdrop (so the desktop and open windows show through). Every card is
+ * painted by `carousel.rs` itself (cairo has the transforms GTK CSS lacks);
+ * only the Ctrl+F search field and the status / empty-state labels are
+ * widgets. */
 
-.mango-picker-status {
-    padding: 0 4px;
-    color: @on_surface_variant;
-    font-size: 13px;
-}
-
-flowbox.mango-picker-grid {
-    background: transparent;
-}
-
-flowboxchild.mango-picker-tile {
-    padding: 6px;
-    border-radius: 16px;
+window.mango-carousel {
     background-color: transparent;
-    transition: background-color 120ms ease;
+    background-image: none;
+    font-family: "Google Sans Flex", "Rubik", "Inter", "Cantarell", sans-serif;
+    font-size: 15px;
 }
 
-flowboxchild.mango-picker-tile:hover {
-    background-color: alpha(@on_surface, 0.08);
+/* The Ctrl+F search pill, mirroring the plugin's search box. */
+window.mango-carousel entry.mango-carousel-search {
+    background-image: none;
+    background-color: alpha(black, 0.73);
+    color: white;
+    border: 1px solid alpha(white, 0.27);
+    border-radius: 10px;
+    padding: 9px 14px;
+    min-height: 22px;
+    caret-color: white;
+    box-shadow: none;
 }
 
-flowboxchild.mango-picker-tile:selected {
-    background-color: @secondary_container;
+window.mango-carousel entry.mango-carousel-search:focus {
+    background-color: alpha(black, 0.73);
+    border-color: alpha(white, 0.67);
 }
 
-/* The wallpaper that is currently shown. */
-flowboxchild.mango-picker-tile.current {
-    background-color: @primary_container;
+window.mango-carousel entry > text > placeholder {
+    color: alpha(white, 0.35);
 }
 
-flowboxchild.mango-picker-tile picture {
-    border-radius: 12px;
-    background-color: alpha(@on_surface, 0.06);
+/* The bottom status line: selected file, position, match counts. */
+.mango-carousel-status {
+    color: alpha(white, 0.62);
+    font-size: 13px;
+    text-shadow: 0 1px 4px alpha(black, 0.9);
 }
 
-.mango-picker-name {
-    color: @on_surface_variant;
+/* The empty-state card (missing or empty wallpaper folder). */
+.mango-carousel-title {
+    color: white;
+    font-size: 24px;
+    font-weight: 700;
+    text-shadow: 0 2px 8px alpha(black, 0.9);
+}
+
+.mango-carousel-sub {
+    color: alpha(white, 0.75);
+    font-size: 14px;
+    text-shadow: 0 1px 4px alpha(black, 0.9);
+}
+
+.mango-carousel-hint {
+    color: alpha(white, 0.55);
     font-size: 12px;
+    text-shadow: 0 1px 4px alpha(black, 0.9);
 }
 
 /* --- Theme gallery ----------------------------------------------------- */

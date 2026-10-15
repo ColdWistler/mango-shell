@@ -1,5 +1,5 @@
 //! Shared plumbing for the shell's "fly-out" applets: the app launcher, the
-//! wallpaper picker and the theme gallery.
+//! theme gallery, the panel gallery and the shortcut reference.
 //!
 //! Instead of a full-screen scrim, each applet is an `Overlay`-layer surface
 //! that hugs the top of the monitor and hangs just below the shell bar — it

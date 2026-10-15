@@ -139,7 +139,7 @@ impl SimpleComponent for BarModel {
         root.set_anchor(Edge::Right, true);
         root.set_decorated(false);
 
-        // The launcher, wallpaper picker and panel picker all live in the
+        // The launcher, wallpaper carousel and panel picker all live in the
         // shell, so the bar just reports their clicks.
         let launcher_button = gtk::Button::new();
         launcher_button.set_css_classes(&["mango-icon-button"]);

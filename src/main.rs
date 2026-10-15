@@ -12,8 +12,9 @@
 //!   +-- WallpaperModel       (wallpaper.rs) one background surface per monitor
 //!   +-- LauncherModel        (launcher.rs)  app launcher, hopped out of the bar
 //!   |         + flyout.rs                   with a slide-down panel (SIGUSR1)
-//!   +-- WallpaperPickerModel (wallpaper.rs) wallpaper grid, same fly-out panel
-//!                                          (SIGUSR2)
+//!   +-- CarouselModel        (carousel.rs)  fullscreen skewed wallpaper
+//!   |                                      carousel (SIGUSR2), ported from
+//!   |                                      DankMaterialShell's wallpaperCarousel
 //!   +-- ThemePickerModel     (theme.rs)     theme gallery, same fly-out panel,
 //!                                          opened from the bar's theme menu
 //!   +-- PanelPickerModel     (panel.rs)     panel/layout gallery, same fly-out,
@@ -27,6 +28,7 @@
 //! one surface. OkShell solves this exactly the same way.
 
 mod bar;
+mod carousel;
 mod flyout;
 mod launcher;
 mod mango;
@@ -40,6 +42,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use bar::{BarInit, BarInput, BarModel, BarOutput};
+use carousel::{CarouselInput, CarouselModel, CarouselOutput};
 use gtk::gdk;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
@@ -48,21 +51,19 @@ use panel::{PanelOutput, PanelPickerInput, PanelPickerModel};
 use relm4::prelude::*;
 use shortcuts::{ShortcutsInput, ShortcutsModel};
 use theme::{ThemeOutput, ThemePickerInput, ThemePickerModel};
-use wallpaper::{
-    WallpaperInit, WallpaperInput, WallpaperModel, WallpaperOutput, WallpaperPickerInput,
-    WallpaperPickerModel,
-};
+use wallpaper::{WallpaperInit, WallpaperInput, WallpaperModel};
 
 use mango::TagView;
 
 /// The shell owns one bar and one wallpaper surface per monitor, the app
-/// launcher, the wallpaper picker, the theme gallery, and coordinates the IPC
-/// feed.
+/// launcher, the wallpaper carousel, the theme gallery, and coordinates the
+/// IPC feed.
 struct Shell {
     bars: HashMap<String, Controller<BarModel>>,
     wallpapers: HashMap<String, Controller<WallpaperModel>>,
     launcher: Controller<LauncherModel>,
-    picker: Controller<WallpaperPickerModel>,
+    /// The fullscreen skewed wallpaper carousel.
+    carousel: Controller<CarouselModel>,
     /// The gallery you can open from the bar's theme menu.
     theme_picker: Controller<ThemePickerModel>,
     /// The panel gallery, opened from the bar's panel button.
@@ -93,7 +94,7 @@ enum ShellInput {
     MangoUpdate(HashMap<String, Vec<TagView>>),
     /// Show/hide the application launcher (sent on `SIGUSR1`).
     ToggleLauncher,
-    /// Show/hide the wallpaper picker (sent on `SIGUSR2` or the bar button).
+    /// Show/hide the wallpaper carousel (sent on `SIGUSR2` or the bar button).
     ToggleWallpaper,
     /// Show/hide the theme gallery (sent by the theme menu in the bar).
     ToggleTheme,
@@ -164,14 +165,14 @@ impl SimpleComponent for Shell {
         // The wallpaper is remembered across restarts.
         let current = wallpaper::load_current();
 
-        // The launcher and the picker are single surfaces shared by every
-        // monitor; they fly out from under the bar and stay hidden until
-        // their toggle arrives.
+        // The launcher and the carousel are single surfaces shared by every
+        // monitor; the launcher flies out from under the bar and both stay
+        // hidden until their toggle arrives.
         let launcher = LauncherModel::builder().launch(current.clone()).detach();
-        let picker = WallpaperPickerModel::builder()
+        let carousel = CarouselModel::builder()
             .launch(current.clone())
             .forward(sender.input_sender(), |output| match output {
-                WallpaperOutput::Apply(path) => ShellInput::SetWallpaper(path),
+                CarouselOutput::Apply(path) => ShellInput::SetWallpaper(path),
             });
         // The theme gallery is another shared overlay, opened from the bar's
         // theme menu ("Browse themes…"). It shows the wallpaper on its banner
@@ -200,7 +201,7 @@ impl SimpleComponent for Shell {
             bars: HashMap::new(),
             wallpapers: HashMap::new(),
             launcher,
-            picker,
+            carousel,
             theme_picker,
             panel_picker,
             shortcuts,
@@ -296,7 +297,7 @@ impl SimpleComponent for Shell {
 
             ShellInput::ToggleLauncher => self.launcher.emit(LauncherInput::Toggle),
 
-            ShellInput::ToggleWallpaper => self.picker.emit(WallpaperPickerInput::Toggle),
+            ShellInput::ToggleWallpaper => self.carousel.emit(CarouselInput::Toggle),
 
             ShellInput::ToggleTheme => self.theme_picker.emit(ThemePickerInput::Toggle),
 
@@ -356,12 +357,11 @@ impl SimpleComponent for Shell {
                 for controller in self.wallpapers.values() {
                     controller.emit(WallpaperInput::SetPath(Some(path.clone())));
                 }
-                // ...and keep the picker's highlight and every flyout banner
-                // in sync. The picker's own SetCurrent marks its tile; the
-                // launcher and theme gallery just repaint their wallpaper
-                // headers.
-                self.picker
-                    .emit(WallpaperPickerInput::SetCurrent(path.clone()));
+                // ...and keep the carousel centered on the new wallpaper and
+                // every flyout banner in sync. The launcher and theme gallery
+                // just repaint their wallpaper headers.
+                self.carousel
+                    .emit(CarouselInput::SetCurrent(path.clone()));
                 self.launcher
                     .emit(LauncherInput::Banner(Some(path.clone())));
                 self.theme_picker
@@ -382,7 +382,7 @@ impl SimpleComponent for Shell {
     }
 }
 
-/// Toggle the launcher on `SIGUSR1` and the wallpaper picker on `SIGUSR2`.
+/// Toggle the launcher on `SIGUSR1` and the wallpaper carousel on `SIGUSR2`.
 ///
 /// Mango's keybind spawns a command that signals this process, for example:
 ///
@@ -478,15 +478,14 @@ fn find_monitor(name: &str) -> Option<gdk::Monitor> {
     None
 }
 
-/// Keep the fly-out surfaces (launcher, wallpaper picker, theme and panel
-/// galleries, shortcut reference) hanging just below the active panel's bar.
-/// Each panel has its own height and may float, so the gap must follow it when
-/// the panel changes.
+/// Keep the fly-out surfaces (launcher, theme and panel galleries, shortcut
+/// reference) hanging just below the active panel's bar. Each panel has its
+/// own height and may float, so the gap must follow it when the panel changes.
+/// The wallpaper carousel is fullscreen and needs no gap.
 fn set_flyout_gap(shell: &Shell, panel: &panel::Panel) {
     let gap = panel.flyout_gap();
     for window in [
         shell.launcher.widget(),
-        shell.picker.widget(),
         shell.theme_picker.widget(),
         shell.panel_picker.widget(),
         shell.shortcuts.widget(),
