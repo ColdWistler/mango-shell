@@ -207,8 +207,9 @@ cargo install cargo-watch            # optional: auto-rebuild on save
 
 # The status widgets read the usual system services (all present on a normal
 # Mango session): PipeWire/PulseAudio (`pactl`), NetworkManager (`nmcli`) and
-# systemd-logind (`busctl`). Only brightness is optional:
+# systemd-logind (`busctl`). Brightness and the audio visualizer are optional:
 sudo pacman -S --needed brightnessctl   # optional; see "Status indicators" below
+sudo pacman -S --needed cava            # optional; audio visualizer, see below
 ```
 
 Check your toolchain:
@@ -336,6 +337,7 @@ background thread so a slow tool never freezes the bar:
 | **Wi-Fi** | NetworkManager (`nmcli`) | click opens a popover: radio on/off, refresh, network list, connect (password prompt); scroll is free |
 | **Volume** | PipeWire / PulseAudio (`pactl`) | click opens a popover: slider, mute and output-device picker; scroll ±5 % |
 | **Brightness** | `/sys/class/backlight` | click opens a popover with a slider; scroll ±5 % (see below) |
+| **Visualizer** | [`cava`](https://github.com/karlstav/cava) (audio spectrum) | live spectrum bars next to the indicators; optional, hides itself when `cava` is absent |
 | **Tray** | `org.kde.StatusNotifierItem` over D-Bus | left = activate, middle = secondary, right = menu |
 
 Clicking **Wi-Fi** shows every visible network, strongest first with the active
@@ -346,6 +348,20 @@ reported by `nmcli` are shown under the header.
 Clicking **Volume** shows a slider, a mute button and the list of output
 devices (sinks); picking one makes it the default output. The bar icon and
 percentage update live while you drag.
+
+The **audio visualizer** is a small pill of live spectrum bars beside the
+status cluster. It spawns [`cava`](https://github.com/karlstav/cava) with a
+generated config that makes it print the analysed spectrum to stdout in raw
+ASCII, and paints the parsed frames with cairo — repainting only when the
+picture actually changes, so an idle stream costs nothing. `cava` is optional:
+if it is missing (or the sound server is not up yet) the widget hides itself
+and keeps checking. To tune it, edit the `BARS`/`WIDTH`/`HEIGHT` constants in
+`src/widgets/visualizer.rs`; to recolour the bars, set the `color` on
+`.mango-visualizer` in your `~/.config/mango-shell/style.css`:
+
+```css
+window.mango-bar .mango-visualizer { color: @primary; }
+```
 
 
 The **system tray** widget *hosts* `org.kde.StatusNotifierWatcher` itself, so
@@ -421,6 +437,8 @@ src/
     wifi.rs         WifiModel: nmcli-backed radio, network list + connect.
     brightness.rs   BrightnessModel: sysfs backlight, slider + scroll.
     tray.rs         TrayModel: StatusNotifierItem host + DBusMenu popover.
+    visualizer.rs   VisualizerModel: cava-backed spectrum bars in a cairo
+                    DrawingArea; hides itself (and retries) when cava is absent.
   style.css         Base Material 3 theme (shapes + default tokens), loaded
                     into a custom CssProvider so it can be reloaded live. The
                     selected panel's CSS, theme's tokens and any user

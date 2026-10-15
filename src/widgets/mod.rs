@@ -8,5 +8,6 @@ pub mod clock;
 pub mod tags;
 pub mod theme;
 pub mod tray;
+pub mod visualizer;
 pub mod volume;
 pub mod wifi;
