@@ -50,6 +50,8 @@ the "hug" bar layout. Concretely:
 - A full-width translucent **`layer 0`** surface with rounded bottom corners.
 - Each cluster of widgets sits in its own **`layer 1`** pill, fully rounded:
   the launcher button, the workspace tags, the clock, and the status cluster.
+  The clock shows a 12-hour time with an AM/PM suffix and opens a **calendar
+  popover** when clicked.
 - Workspace tags follow end4's workspaces: the number is always visible,
   **occupied** tags get a subtle `secondary container` pill, and the **active**
   tag is a filled `primary` pill with `on primary` text. `urgent` uses the
@@ -429,7 +431,8 @@ src/
                     scoped to the `panel-<id>` class on the bar window; the
                     active one is spliced between style.css and the theme.
   widgets/
-    clock.rs        ClockModel: date • time, 1 Hz timer.
+    clock.rs        ClockModel: date • 12-hour time + a calendar popover,
+                    refreshed on a minute-boundary timer.
     tags.rs         TagsModel: clickable tag buttons (occupied/active/urgent).
     theme.rs        ThemeButtonModel: the bar's round theme button with its
                     popover of palettes (live cairo previews + checkmarks).
