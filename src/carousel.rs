@@ -1138,18 +1138,17 @@ fn paint_card(
     let fit = (box_w / sw).max(box_h / sh) * PARALLAX_OVERSCAN;
     let scaled_w = sw * fit;
     let scaled_h = sh * fit;
+    // Normalise the pointer offset from this card's centre to roughly -1..1,
+    // so the drift grows as the pointer moves away from the picture.
     let (px_n, py_n) = scene
         .pointer
         .map(|(x, y)| {
-            let vw = box_w * 2.0 / scale.max(0.01); // rough viewport width reference not needed; use screen
-            (x, y)
+            (
+                ((x - cx) / (box_w * 0.8 + 120.0) * 2.0).clamp(-1.0, 1.0),
+                ((y - cy) / (box_h * 0.8 + 120.0) * 2.0).clamp(-1.0, 1.0),
+            )
         })
         .unwrap_or((0.0, 0.0));
-    let (px_n2, py_n2) = scene
-        .pointer
-        .map(|(x, y)| ((x - cx) / (box_w * 0.8 + 120.0), (y - cy) / (box_h * 0.8 + 120.0)))
-        .unwrap_or((0.0, 0.0));
-    let (px_n, py_n) = ((px_n2 * 2.0).clamp(-1.0, 1.0), (py_n2 * 2.0).clamp(-1.0, 1.0));
     let depth = depth_weight(d);
     let ox = px_n * PARALLAX_POINTER * depth + (-scene.velocity) * PARALLAX_SCROLL * depth * CARD_WIDTH;
     let oy = py_n * (PARALLAX_POINTER * 0.5) * depth;

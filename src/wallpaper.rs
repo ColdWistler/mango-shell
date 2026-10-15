@@ -130,7 +130,10 @@ pub enum WallpaperInput {
 
 pub struct WallpaperModel {
     window: gtk::Window,
-    picture: gtk::Picture,
+    stack: gtk::Stack,
+    picture_a: gtk::Picture,
+    picture_b: gtk::Picture,
+    use_a: bool,
 }
 
 #[relm4::component(pub)]
@@ -146,7 +149,7 @@ impl SimpleComponent for WallpaperModel {
             set_decorated: false,
 
             #[wrap(Some)]
-            set_child = &model.picture.clone() {},
+            set_child = &model.stack.clone() {},
         }
     }
 
@@ -171,45 +174,65 @@ impl SimpleComponent for WallpaperModel {
         root.set_anchor(Edge::Left, true);
         root.set_anchor(Edge::Right, true);
 
-        let picture = gtk::Picture::new();
-        picture.set_content_fit(gtk::ContentFit::Cover);
-        picture.set_can_shrink(true);
-        picture.set_hexpand(true);
-        picture.set_vexpand(true);
+        let picture_a = gtk::Picture::new();
+        picture_a.set_content_fit(gtk::ContentFit::Cover);
+        picture_a.set_can_shrink(true);
+        picture_a.set_hexpand(true);
+        picture_a.set_vexpand(true);
 
-        let model = WallpaperModel {
+        let picture_b = gtk::Picture::new();
+        picture_b.set_content_fit(gtk::ContentFit::Cover);
+        picture_b.set_can_shrink(true);
+        picture_b.set_hexpand(true);
+        picture_b.set_vexpand(true);
+
+        let stack = gtk::Stack::new();
+        stack.add_child(&picture_a);
+        stack.add_child(&picture_b);
+        stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+        stack.set_transition_duration(280);
+
+        let mut model = WallpaperModel {
             window: root.clone(),
-            picture,
+            stack: stack.clone(),
+            picture_a: picture_a.clone(),
+            picture_b: picture_b.clone(),
+            use_a: true,
         };
 
         let widgets = view_output!();
 
-        apply(&model.picture, &model.window, init.path.as_deref());
+        apply_crossfade(&mut model, init.path.as_deref());
 
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         match msg {
-            WallpaperInput::SetPath(path) => apply(&self.picture, &self.window, path.as_deref()),
+            WallpaperInput::SetPath(path) => apply_crossfade(self, path.as_deref()),
         }
     }
 }
 
 /// Point the surface at `path`, or hide it when there is nothing to show.
-fn apply(picture: &gtk::Picture, window: &gtk::Window, path: Option<&Path>) {
+fn apply_crossfade(model: &mut WallpaperModel, path: Option<&Path>) {
     let Some(path) = path else {
-        window.set_visible(false);
+        model.window.set_visible(false);
         return;
     };
-    match gdk::Texture::from_filename(path) {
-        Ok(texture) => {
-            picture.set_paintable(Some(&texture));
-            window.set_visible(true);
+
+    if let Ok(texture) = gdk::Texture::from_filename(path) {
+        if model.use_a {
+            model.picture_b.set_paintable(Some(&texture));
+            model.stack.set_visible_child(&model.picture_b);
+        } else {
+            model.picture_a.set_paintable(Some(&texture));
+            model.stack.set_visible_child(&model.picture_a);
         }
-        Err(error) => {
-            eprintln!("mango-shell: could not load wallpaper: {error}");
-            window.set_visible(false);
-        }
+        model.use_a = !model.use_a;
+        model.window.set_visible(true);
+    } else {
+        eprintln!("mango-shell: could not load wallpaper: {}", path.display());
+        model.window.set_visible(false);
     }
 }
