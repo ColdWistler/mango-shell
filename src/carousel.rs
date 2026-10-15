@@ -98,6 +98,26 @@ const WRAP: bool = true;
 /// ratio.
 const DECODE_BOX: (i32, i32) = (600, 840);
 
+// --- Parallax -------------------------------------------------------------
+
+/// Pointer parallax: as the pointer crosses the overlay the centre card's
+/// image drifts up to this many pixels towards it. Outer cards drift less, so
+/// the picture reads as sunk behind its frame.
+const PARALLAX_POINTER: f64 = 30.0;
+
+/// Motion parallax: while the carousel glides, each image lags its frame by
+/// this fraction of the per-frame travel, so a slide has a little depth.
+const PARALLAX_SCROLL: f64 = 0.25;
+
+/// How much the image is over-scaled so a drifting one still covers the frame.
+const PARALLAX_OVERSCAN: f64 = 1.16;
+
+/// Depth weight for the drift: the centre card (`falloff` = 1) drifts fully,
+/// distant cards about a third as much.
+fn depth_weight(d: f64) -> f64 {
+    0.35 + 0.65 * falloff(d)
+}
+
 // --- Easing / layout helpers ----------------------------------------------
 
 /// A scalar eased from `from` to `to` with an in-out cubic curve.
@@ -170,6 +190,11 @@ struct Scene {
     confirm: Option<(usize, Instant)>,
     /// The slot under the pointer, if any.
     hover: Option<usize>,
+    /// The pointer position in canvas pixels, for the parallax drift. `None`
+    /// when the pointer is off the overlay.
+    pointer: Option<(f64, f64)>,
+    /// Cards travelled per frame on the last tick, for the motion parallax.
+    velocity: f64,
     /// Thumbnail loading progress.
     loading: bool,
     loaded: usize,
@@ -362,6 +387,8 @@ impl SimpleComponent for CarouselModel {
             hide_when_faded: false,
             confirm: None,
             hover: None,
+            pointer: None,
+            velocity: 0.0,
             loading: false,
             loaded: 0,
             paths,
@@ -511,10 +538,13 @@ impl SimpleComponent for CarouselModel {
             if scene.confirm.is_some() {
                 return;
             }
+            let old = scene.pointer;
+            scene.pointer = Some((x, y));
             let hit = scene.hit_test(motion_canvas.width(), motion_canvas.height(), x, y);
-            if hit != scene.hover {
-                scene.hover = hit;
-                drop(scene);
+            let changed = hit != scene.hover || old != scene.pointer;
+            scene.hover = hit;
+            drop(scene);
+            if changed {
                 motion_canvas.queue_draw();
             }
         });
@@ -522,7 +552,9 @@ impl SimpleComponent for CarouselModel {
         let leave_canvas = canvas.clone();
         motion.connect_leave(move |_| {
             let mut scene = leave_scene.borrow_mut();
-            if scene.hover.take().is_some() {
+            let hover_changed = scene.hover.take().is_some();
+            let pointer_changed = scene.pointer.take().is_some();
+            if hover_changed || pointer_changed {
                 drop(scene);
                 leave_canvas.queue_draw();
             }
@@ -630,6 +662,8 @@ impl CarouselModel {
             scene.search_open = false;
             scene.confirm = None;
             scene.hover = None;
+            scene.pointer = None;
+            scene.velocity = 0.0;
             scene.hide_when_faded = false;
             let image = self
                 .current
@@ -836,6 +870,7 @@ impl CarouselModel {
             let mut scene = self.scene.borrow_mut();
             scene.confirm = Some((slot, Instant::now()));
             scene.hover = None;
+            scene.pointer = None;
         }
         self.canvas.queue_draw();
         self.ensure_tick();
@@ -882,12 +917,18 @@ impl CarouselModel {
 
             match scene.anim.as_ref().and_then(|anim| anim.value(now)) {
                 Some(value) => {
+                    let vel = value - scene.pos;
                     scene.pos = value;
+                    scene.velocity = scene.velocity * 0.6 + vel * 0.4;
                     busy = true;
                 }
                 None => {
                     if let Some(anim) = scene.anim.take() {
                         scene.pos = anim.to;
+                    }
+                    scene.velocity *= 0.8;
+                    if scene.velocity.abs() < 0.02 {
+                        scene.velocity = 0.0;
                     }
                 }
             }
@@ -1057,7 +1098,7 @@ fn paint(cr: &cairo::Context, width: i32, height: i32, scene: &Scene) {
         if alpha <= 0.005 {
             continue;
         }
-        paint_card(cr, width / 2.0 + d * CARD_WIDTH, height / 2.0, sc, alpha, surface);
+        paint_card(cr, width / 2.0 + d * CARD_WIDTH, height / 2.0, sc, alpha, surface, d, scene);
     }
 }
 
@@ -1070,6 +1111,8 @@ fn paint_card(
     scale: f64,
     alpha: f64,
     surface: &cairo::ImageSurface,
+    d: f64,
+    scene: &Scene,
 ) {
     let hw = CARD_WIDTH * scale / 2.0;
     let hh = CARD_HEIGHT * scale / 2.0;
@@ -1086,13 +1129,37 @@ fn paint_card(
     parallelogram(cr, cx, cy, hw - inset, hh - inset, SKEW);
     cr.clip();
     // Cover-fit the (already card-aspect) image over the inner parallelogram's
-    // axis-aligned bounding box; clipping restores the lean.
+    // axis-aligned bounding box, with a small overscan and pointer + motion
+    // parallax to create a subtle depth effect.
     let sw = f64::from(surface.width());
     let sh = f64::from(surface.height());
     let box_w = 2.0 * (hw - inset) + 2.0 * SKEW.abs() * (hh - inset);
     let box_h = 2.0 * (hh - inset);
-    let fit = (box_w / sw).max(box_h / sh);
-    cr.translate(cx - sw * fit / 2.0, cy - sh * fit / 2.0);
+    let fit = (box_w / sw).max(box_h / sh) * PARALLAX_OVERSCAN;
+    let scaled_w = sw * fit;
+    let scaled_h = sh * fit;
+    let (px_n, py_n) = scene
+        .pointer
+        .map(|(x, y)| {
+            let vw = box_w * 2.0 / scale.max(0.01); // rough viewport width reference not needed; use screen
+            (x, y)
+        })
+        .unwrap_or((0.0, 0.0));
+    let (px_n2, py_n2) = scene
+        .pointer
+        .map(|(x, y)| ((x - cx) / (box_w * 0.8 + 120.0), (y - cy) / (box_h * 0.8 + 120.0)))
+        .unwrap_or((0.0, 0.0));
+    let (px_n, py_n) = ((px_n2 * 2.0).clamp(-1.0, 1.0), (py_n2 * 2.0).clamp(-1.0, 1.0));
+    let depth = depth_weight(d);
+    let ox = px_n * PARALLAX_POINTER * depth + (-scene.velocity) * PARALLAX_SCROLL * depth * CARD_WIDTH;
+    let oy = py_n * PARALLAX_POINTER * depth * 0.6;
+    let mut dx = ox;
+    let mut dy = oy;
+    let slack_x = (scaled_w - box_w).max(0.0) / 2.0;
+    let slack_y = (scaled_h - box_h).max(0.0) / 2.0;
+    dx = dx.clamp(-slack_x, slack_x);
+    dy = dy.clamp(-slack_y, slack_y);
+    cr.translate(cx - scaled_w / 2.0 + dx, cy - scaled_h / 2.0 + dy);
     cr.scale(fit, fit);
     let _ = cr.set_source_surface(surface, 0.0, 0.0);
     let _ = cr.paint_with_alpha(alpha);
