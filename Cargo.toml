@@ -25,6 +25,9 @@ signal-hook = "0.3"
 system-tray = "0.8"
 # Async runtime the tray host runs on (system-tray is Tokio-based).
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+# Used only to hand freed memory back to the OS (`malloc_trim`) after the
+# carousel drops a batch of decoded thumbnails.
+libc = "0.2"
 
 [profile.release]
 lto = "thin"
