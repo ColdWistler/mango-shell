@@ -1,5 +1,7 @@
 //! Clock + date widget.
 
+use std::time::Duration;
+
 use gtk::glib;
 use gtk::prelude::*;
 use relm4::Sender;
@@ -62,19 +64,21 @@ impl SimpleComponent for ClockModel {
 
         let widgets = view_output!();
 
-        model.timer = Some(glib::timeout_add_seconds_local(1, move || {
-            sender.input(ClockInput::Tick);
-            glib::ControlFlow::Continue
-        }));
+        // The clock only shows hours:minutes, so wake once a minute — aligned
+        // to the minute boundary — instead of every second.
+        model.timer = Some(arm(&sender));
 
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             ClockInput::Tick => {
                 self.time = now("%H:%M");
                 self.date = now("%a, %d/%m");
+                // Re-arm for the next minute boundary; the drift corrects
+                // itself because the delay is recomputed from the wall clock.
+                self.timer = Some(arm(&sender));
             }
         }
     }
@@ -84,6 +88,19 @@ impl SimpleComponent for ClockModel {
             timer.remove();
         }
     }
+}
+
+/// Schedule the next tick at the coming minute boundary, so labels change
+/// exactly when the displayed minute rolls over.
+fn arm(sender: &ComponentSender<ClockModel>) -> glib::SourceId {
+    let delay = glib::DateTime::now_local()
+        .ok()
+        .map(|dt| (60 - dt.second()).clamp(1, 60) as u64)
+        .unwrap_or(60);
+    let sender = sender.clone();
+    glib::timeout_add_local_once(Duration::from_secs(delay), move || {
+        sender.input(ClockInput::Tick);
+    })
 }
 
 /// Format the current local time with a glib format string.
