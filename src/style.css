@@ -187,6 +187,80 @@ window.mango-bar button.mango-icon-button:active {
     font-size: 13px;
 }
 
+/* --- Clock calendar popover ------------------------------------------ */
+
+/* The clock is a menu button, so strip the button chrome: the pill around it
+ * is provided by `.mango-group`. */
+window.mango-bar button.mango-clock-button {
+    padding: 0;
+    min-height: 0;
+    min-width: 0;
+}
+
+window.mango-bar button.mango-clock-button:hover {
+    background-color: alpha(@on_surface, 0.08);
+    border-radius: 9999px;
+}
+
+/* `GtkCalendar` is the stock widget; these rules only make it legible on the
+ * dark popover and give the header/day cells the app's shape.
+ *
+ * Nodes (GTK 4): calendar.view > header (button, stack.month, label.year) and
+ * calendar.view > grid > label.day-number / .day-name / .other-month / .today. */
+.mango-calendar {
+    background: transparent;
+    color: @on_surface;
+    padding: 4px;
+}
+
+.mango-calendar header {
+    background: transparent;
+    padding: 2px;
+}
+
+.mango-calendar header button {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: @on_surface_variant;
+    border-radius: 8px;
+    min-height: 26px;
+    min-width: 26px;
+    padding: 0 6px;
+}
+
+.mango-calendar header button:hover {
+    background-color: alpha(@on_surface, 0.08);
+    color: @on_surface;
+}
+
+.mango-calendar header label.year {
+    color: @on_surface;
+    font-weight: 600;
+}
+
+.mango-calendar label.day-name {
+    color: @on_surface_variant;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.mango-calendar label.week-number,
+.mango-calendar label.other-month {
+    color: @outline;
+}
+
+.mango-calendar label.today {
+    color: @primary;
+    font-weight: 700;
+}
+
+.mango-calendar label:selected {
+    background-color: @primary;
+    color: @on_primary;
+    border-radius: 9999px;
+}
+
 /* --- Right-hand status cluster --------------------------------------- */
 
 .mango-status {
