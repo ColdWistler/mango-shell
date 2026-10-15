@@ -116,13 +116,14 @@ pub fn scan_images(dir: &Path) -> Vec<PathBuf> {
 static TRANSITION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn next_transition() -> gtk::StackTransitionType {
     let idx = TRANSITION_COUNTER.fetch_add(1, Ordering::Relaxed);
-    match idx % 6 {
+    match idx % 7 {
         0 => gtk::StackTransitionType::Crossfade,
         1 => gtk::StackTransitionType::SlideRight,
         2 => gtk::StackTransitionType::SlideLeft,
         3 => gtk::StackTransitionType::SlideDown,
         4 => gtk::StackTransitionType::SlideUp,
         5 => gtk::StackTransitionType::OverUp,
+        6 => gtk::StackTransitionType::OverDown,
         _ => gtk::StackTransitionType::Crossfade,
     }
 }

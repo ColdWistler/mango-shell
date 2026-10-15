@@ -80,7 +80,7 @@ const CONFIRM_SCALE: f64 = 1.6;
 
 /// Open/close fade, glide between cards, and the confirm animation.
 const FADE_MS: u64 = 150;
-const MOVE_MS: u64 = 150;
+const MOVE_MS: u64 = 200;
 const CONFIRM_MS: u64 = 300;
 
 /// The animation tick.
