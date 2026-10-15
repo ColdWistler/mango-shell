@@ -17,6 +17,7 @@
 //! [wallpaperCarousel]: https://github.com/motor-dev/wallpaperCarousel
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use gtk::gdk;
 use gtk::prelude::*;
@@ -111,7 +112,20 @@ pub fn scan_images(dir: &Path) -> Vec<PathBuf> {
     images
 }
 
-// --- Background surface (one per monitor) --------------------------------
+// Randomize transition types for variety (similar to awww's effects).
+static TRANSITION_COUNTER: AtomicUsize = AtomicUsize::new(0);
+fn next_transition() -> gtk::StackTransitionType {
+    let idx = TRANSITION_COUNTER.fetch_add(1, Ordering::Relaxed);
+    match idx % 6 {
+        0 => gtk::StackTransitionType::Crossfade,
+        1 => gtk::StackTransitionType::SlideRight,
+        2 => gtk::StackTransitionType::SlideLeft,
+        3 => gtk::StackTransitionType::SlideDown,
+        4 => gtk::StackTransitionType::SlideUp,
+        5 => gtk::StackTransitionType::OverUp,
+        _ => gtk::StackTransitionType::Crossfade,
+    }
+}
 
 /// Everything a wallpaper surface needs to exist.
 pub struct WallpaperInit {
@@ -224,9 +238,11 @@ fn apply_crossfade(model: &mut WallpaperModel, path: Option<&Path>) {
     if let Ok(texture) = gdk::Texture::from_filename(path) {
         if model.use_a {
             model.picture_b.set_paintable(Some(&texture));
+            model.stack.set_transition_type(next_transition());
             model.stack.set_visible_child(&model.picture_b);
         } else {
             model.picture_a.set_paintable(Some(&texture));
+            model.stack.set_transition_type(next_transition());
             model.stack.set_visible_child(&model.picture_a);
         }
         model.use_a = !model.use_a;
