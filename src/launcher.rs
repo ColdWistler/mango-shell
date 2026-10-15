@@ -35,6 +35,12 @@ const MAX_RESULTS: usize = 60;
 pub struct LauncherModel {
     /// Every launchable application, loaded once at startup.
     apps: Vec<gio::AppInfo>,
+    /// Display names parallel to `apps`, cached so the label does not have to
+    /// ask GIO for them again while the list is rebuilt.
+    names: Vec<String>,
+    /// Lowercased `names`, parallel to `apps`, so filtering a keystroke does
+    /// not allocate a fresh lowercased string for every application.
+    lower_names: Vec<String>,
     /// Indices into `apps` that match the current query, in display order.
     matches: Vec<usize>,
     /// Position within `matches` of the highlighted row.
@@ -170,8 +176,18 @@ impl SimpleComponent for LauncherModel {
         });
         root.add_controller(keys);
 
+        // Cache the names up front so a keystroke only lowercases the query,
+        // not every application.
+        let names: Vec<String> = apps
+            .iter()
+            .map(|app| app.display_name().to_string())
+            .collect();
+        let lower_names: Vec<String> = names.iter().map(|name| name.to_lowercase()).collect();
+
         let mut model = LauncherModel {
             apps,
+            names,
+            lower_names,
             matches: Vec::new(),
             selected: 0,
             window: root.clone(),
@@ -244,12 +260,10 @@ impl LauncherModel {
     fn refilter(&mut self, query: &str) {
         let query = query.trim().to_lowercase();
         self.matches = self
-            .apps
+            .lower_names
             .iter()
             .enumerate()
-            .filter(|(_, app)| {
-                query.is_empty() || app.display_name().to_lowercase().contains(&query)
-            })
+            .filter(|(_, name)| query.is_empty() || name.contains(&query))
             .map(|(index, _)| index)
             .take(MAX_RESULTS)
             .collect();
@@ -273,7 +287,7 @@ impl LauncherModel {
                 line.append(&image);
             }
 
-            let label = gtk::Label::new(Some(app.display_name().as_str()));
+            let label = gtk::Label::new(Some(&self.names[app_index]));
             label.set_xalign(0.0);
             label.set_halign(gtk::Align::Start);
             label.set_ellipsize(gtk::pango::EllipsizeMode::End);
