@@ -129,6 +129,7 @@ impl SimpleComponent for ThemeButtonModel {
 
         popover.set_child(Some(&content));
         root.set_popover(Some(&popover));
+        crate::anim::pop_in(&popover);
 
         let mut model = ThemeButtonModel {
             current: init,

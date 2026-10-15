@@ -153,6 +153,7 @@ impl SimpleComponent for BrightnessModel {
 
         let widgets = view_output!();
         root.set_popover(Some(&popover));
+        crate::anim::pop_in(&popover);
 
         // Dragging the slider sets an absolute brightness.
         slider.connect_value_changed({

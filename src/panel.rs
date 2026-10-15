@@ -384,8 +384,8 @@ struct Card {
 
 pub struct PanelPickerModel {
     window: gtk::Window,
-    /// Slides the panel out from under the bar.
-    revealer: gtk::Revealer,
+    /// Slides + fades the panel out from under the bar.
+    flyout: flyout::Flyout,
     flow: gtk::FlowBox,
     cards: Vec<Card>,
     current: String,
@@ -426,7 +426,7 @@ impl SimpleComponent for PanelPickerModel {
             set_decorated: false,
 
             #[wrap(Some)]
-            set_child = &model.revealer.clone() {},
+            set_child = &model.flyout.widget() {},
         }
     }
 
@@ -474,13 +474,12 @@ impl SimpleComponent for PanelPickerModel {
         panel_box.append(&title);
         panel_box.append(&flow);
 
-        let revealer = flyout::make_revealer();
-        revealer.set_child(Some(&panel_box));
-        flyout::wire_hide(&root, &revealer);
+        let flyout_panel = flyout::Flyout::new(&root);
+        flyout_panel.set_child(&panel_box);
 
         let mut model = PanelPickerModel {
             window: root.clone(),
-            revealer,
+            flyout: flyout_panel,
             flow,
             cards,
             current: init,
@@ -556,11 +555,11 @@ impl SimpleComponent for PanelPickerModel {
 impl PanelPickerModel {
     fn show(&mut self) {
         self.highlight_current();
-        flyout::show(&self.window, &self.revealer, Some(self.flow.upcast_ref()));
+        self.flyout.show(Some(self.flow.upcast_ref()));
     }
 
     fn hide(&mut self) {
-        flyout::hide(&self.revealer);
+        self.flyout.hide();
     }
 
     fn selected_index(&self) -> Option<usize> {

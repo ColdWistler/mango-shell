@@ -35,8 +35,9 @@ the "hug" bar layout. Concretely:
   brightness** readouts, each pill-shaped and hidden when it has nothing to
   show (no backlight, no tray items, and so on).
 - The launcher, wallpaper picker and theme gallery are **fly-outs**: instead of
-  a full-screen scrim they hang just below the bar and slide down out of it,
-  floating over whatever window is open. Each is styled after the app
+  a full-screen scrim they hang just below the bar and slide *and fade* down
+  out of it with a small spring, floating over whatever window is open. Each is
+  styled after the app
   launchers in the [HyDE project](https://github.com/HyDE-Project/HyDE) — a
   near-opaque rounded card with the current wallpaper pinned to the top, a
   pill search field and an accent-highlighted selection.
@@ -143,6 +144,27 @@ blur_layer=1
 ```
 
 The bar itself is already translucent, so it picks up the blur automatically.
+
+### Transitions & animation
+
+Motion stays short and ease-out so it reads as *snappy* rather than busy. The
+pieces live in one place, [`src/anim.rs`](src/anim.rs), which drives the
+couple of transitions GTK can't do on its own with a lightweight timeout:
+
+- **Fly-outs** (launcher, wallpaper, theme and panel pickers, shortcuts) slide
+  down *and* fade: two nested `GtkRevealer`s — a slide with a crossfade inside
+  it — then a small spring as the panel lands.
+- **Bar popovers** (theme switcher, Wi-Fi, volume, brightness) fade in with a
+  short rise into place.
+- **Wallpapers** change through a randomly chosen transition from a wide set
+  (`GtkStackTransitionType`: fades, slides, overs, unders and rotates) at a
+  random duration, and roughly one change in six fades through black instead.
+- **The wallpaper carousel** eases its glide with a slight overshoot (a subtle
+  spring) and draws a soft glow behind the nearest cards.
+
+Durations, offsets and easing constants sit at the top of `anim.rs`,
+`flyout.rs`, `wallpaper.rs` and `carousel.rs`, so they are easy to tune or to
+turn down.
 
 ---
 
@@ -336,9 +358,13 @@ src/
                     CentreBox slots according to the active panel (src/panel.rs).
                     Its buttons forward launcher/wallpaper/theme/panel toggles
                     to the shell.
+  anim.rs           Shared tweening: fade-in, a landing spring, and the popover
+                    open animation. GTK4 can't scale widgets from CSS, so these
+                    short ease-out moves are driven with a timeout.
   flyout.rs         Shared recipe for the launcher/wallpaper/theme "fly-outs":
                     an Overlay-layer panel that hangs under the bar and slides
-                    out of it (a GtkRevealer), plus the wallpaper banner header.
+                    + fades out of it (a Flyout: nested GtkRevealers with a
+                    landing spring), plus the wallpaper banner header.
   launcher.rs       LauncherModel: an Overlay-layer fly-out panel. Searches
                     .desktop entries with gio::AppInfo; toggled via SIGUSR1 or
                     the bar button.

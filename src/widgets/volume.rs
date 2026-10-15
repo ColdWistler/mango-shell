@@ -199,6 +199,7 @@ impl SimpleComponent for VolumeModel {
 
         let widgets = view_output!();
         root.set_popover(Some(&popover));
+        crate::anim::pop_in(&popover);
 
         // Clicking the mute icon toggles mute.
         mute_button.connect_clicked({

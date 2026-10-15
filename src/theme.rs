@@ -188,8 +188,8 @@ struct Card {
 
 pub struct ThemePickerModel {
     window: gtk::Window,
-    /// Slides the panel out from under the bar.
-    revealer: gtk::Revealer,
+    /// Slides + fades the panel out from under the bar.
+    flyout: flyout::Flyout,
     /// The wallpaper snapshot in the panel header.
     banner: flyout::Banner,
     flow: gtk::FlowBox,
@@ -234,7 +234,7 @@ impl SimpleComponent for ThemePickerModel {
             set_decorated: false,
 
             #[wrap(Some)]
-            set_child = &model.revealer.clone() {},
+            set_child = &model.flyout.widget() {},
         }
     }
 
@@ -287,13 +287,12 @@ impl SimpleComponent for ThemePickerModel {
         panel.append(&title);
         panel.append(&flow);
 
-        let revealer = flyout::make_revealer();
-        revealer.set_child(Some(&panel));
-        flyout::wire_hide(&root, &revealer);
+        let flyout_panel = flyout::Flyout::new(&root);
+        flyout_panel.set_child(&panel);
 
         let mut model = ThemePickerModel {
             window: root.clone(),
-            revealer,
+            flyout: flyout_panel,
             banner,
             flow,
             cards,
@@ -372,11 +371,11 @@ impl SimpleComponent for ThemePickerModel {
 impl ThemePickerModel {
     fn show(&mut self) {
         self.highlight_current();
-        flyout::show(&self.window, &self.revealer, Some(self.flow.upcast_ref()));
+        self.flyout.show(Some(self.flow.upcast_ref()));
     }
 
     fn hide(&mut self) {
-        flyout::hide(&self.revealer);
+        self.flyout.hide();
     }
 
     fn selected_index(&self) -> Option<usize> {

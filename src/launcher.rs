@@ -41,8 +41,8 @@ pub struct LauncherModel {
     selected: usize,
     /// The root, cloned so `update` can show/hide and focus it.
     window: gtk::Window,
-    /// Slides the panel out from under the bar.
-    revealer: gtk::Revealer,
+    /// Slides + fades the panel out from under the bar.
+    flyout: flyout::Flyout,
     /// The wallpaper snapshot in the panel header.
     banner: flyout::Banner,
     search: gtk::SearchEntry,
@@ -80,7 +80,7 @@ impl SimpleComponent for LauncherModel {
             set_decorated: false,
 
             #[wrap(Some)]
-            set_child = &model.revealer.clone() {},
+            set_child = &model.flyout.widget() {},
         }
     }
 
@@ -123,9 +123,8 @@ impl SimpleComponent for LauncherModel {
         panel.append(&search);
         panel.append(&scrolled);
 
-        let revealer = flyout::make_revealer();
-        revealer.set_child(Some(&panel));
-        flyout::wire_hide(&root, &revealer);
+        let flyout_panel = flyout::Flyout::new(&root);
+        flyout_panel.set_child(&panel);
 
         // Re-filter on every text change (immediate, unlike `search-changed`
         // which GtkSearchEntry debounces).
@@ -176,7 +175,7 @@ impl SimpleComponent for LauncherModel {
             matches: Vec::new(),
             selected: 0,
             window: root.clone(),
-            revealer,
+            flyout: flyout_panel,
             banner,
             search,
             list,
@@ -234,11 +233,11 @@ impl LauncherModel {
         // `set_text` may or may not emit `changed`, so re-filter explicitly.
         self.search.set_text("");
         self.refilter("");
-        flyout::show(&self.window, &self.revealer, Some(self.search.upcast_ref()));
+        self.flyout.show(Some(self.search.upcast_ref()));
     }
 
     fn hide(&mut self) {
-        flyout::hide(&self.revealer);
+        self.flyout.hide();
     }
 
     /// Recompute `matches` for `query` and rebuild the rows.

@@ -301,8 +301,8 @@ fn direction(arg: &str) -> String {
 
 pub struct ShortcutsModel {
     window: gtk::Window,
-    /// Slides the panel out from under the bar.
-    revealer: gtk::Revealer,
+    /// Slides + fades the panel out from under the bar.
+    flyout: flyout::Flyout,
     /// The wallpaper snapshot in the panel header.
     banner: flyout::Banner,
     search: gtk::SearchEntry,
@@ -340,7 +340,7 @@ impl SimpleComponent for ShortcutsModel {
             set_decorated: false,
 
             #[wrap(Some)]
-            set_child = &model.revealer.clone() {},
+            set_child = &model.flyout.widget() {},
         }
     }
 
@@ -383,9 +383,8 @@ impl SimpleComponent for ShortcutsModel {
         panel.append(&status);
         panel.append(&scrolled);
 
-        let revealer = flyout::make_revealer();
-        revealer.set_child(Some(&panel));
-        flyout::wire_hide(&root, &revealer);
+        let flyout_panel = flyout::Flyout::new(&root);
+        flyout_panel.set_child(&panel);
 
         // Re-filter on every text change (immediate, unlike `search-changed`).
         let search_sender = sender.clone();
@@ -411,7 +410,7 @@ impl SimpleComponent for ShortcutsModel {
 
         let model = ShortcutsModel {
             window: root.clone(),
-            revealer,
+            flyout: flyout_panel,
             banner,
             search,
             status,
@@ -460,11 +459,11 @@ impl ShortcutsModel {
         self.search.set_text("");
         self.sections = self.source.as_deref().map(read_sections).unwrap_or_default();
         self.render("");
-        flyout::show(&self.window, &self.revealer, Some(self.search.upcast_ref()));
+        self.flyout.show(Some(self.search.upcast_ref()));
     }
 
     fn hide(&mut self) {
-        flyout::hide(&self.revealer);
+        self.flyout.hide();
     }
 
     /// Rebuild the list for `query`, dropping rows (and empty sections) that

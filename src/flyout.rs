@@ -4,9 +4,9 @@
 //! Instead of a full-screen scrim, each applet is an `Overlay`-layer surface
 //! that hugs the top of the monitor and hangs just below the shell bar — it
 //! overlays the window underneath without ever covering the whole screen. The
-//! panel itself lives inside a [`gtk::Revealer`] with a *slide down*
-//! transition, so opening an applet visibly morphs it out from under the bar,
-//! the way the rofi launchers in the
+//! panel itself lives inside a [`Flyout`]: a slide revealer with a fade
+//! nested inside it and a small spring as it lands, so opening an applet
+//! visibly morphs it out from under the bar, the way the rofi launchers in the
 //! [HyDE project](https://github.com/HyDE-Project/HyDE) (style 10/CompactPanel)
 //! drop their search panel below the top bar.
 //!
@@ -48,41 +48,97 @@ pub fn prepare_layer(window: &gtk::Window, namespace: &str) {
     window.set_visible(false);
 }
 
-/// A revealer that slides its panel down out of the bar (faster than GTK's
-/// default, so it still feels snappy).
-pub fn make_revealer() -> gtk::Revealer {
-    let revealer = gtk::Revealer::new();
-    revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    revealer.set_transition_duration(190);
-    revealer.set_halign(gtk::Align::Center);
-    revealer.set_valign(gtk::Align::Start);
-    revealer
+/// How long the panel takes to slide out of the bar, and to fade in.
+const SLIDE_MS: u32 = 190;
+const FADE_MS: u32 = 150;
+
+/// The little spring the panel does once it has landed.
+const SPRING_MS: u64 = 240;
+const SPRING_AMPLITUDE: f64 = 5.0;
+
+/// The animated container every fly-out panel lives in.
+///
+/// Two nested [`gtk::Revealer`]s: the outer *slides* the panel down out of the
+/// bar, the inner *crossfades* it, so opening reads as slide + fade rather
+/// than a bare wipe. Once the slide has landed the panel gets a short spring
+/// ([`crate::anim::settle`]), and the surface hides itself when the slide back
+/// up finishes.
+pub struct Flyout {
+    window: gtk::Window,
+    /// Slides the panel (the outer revealer, dropped into the window).
+    slide: gtk::Revealer,
+    /// Fades the panel (nested inside `slide`).
+    fade: gtk::Revealer,
+    /// The panel itself, kept so the landing spring can nudge it.
+    panel: Rc<RefCell<Option<gtk::Widget>>>,
 }
 
-/// Hide the surface once its revealer has finished sliding back up. The
-/// revealer only reports *fully* hidden children, so the window disappears
-/// exactly when the animation ends.
-pub fn wire_hide(window: &gtk::Window, revealer: &gtk::Revealer) {
-    let window = window.clone();
-    revealer.connect_child_revealed_notify(move |revealer| {
-        if !revealer.is_child_revealed() {
-            window.set_visible(false);
+impl Flyout {
+    /// Build the revealer pair for `window` and wire the surface to hide once
+    /// the slide back up has finished.
+    pub fn new(window: &gtk::Window) -> Self {
+        let fade = gtk::Revealer::new();
+        fade.set_transition_type(gtk::RevealerTransitionType::Crossfade);
+        fade.set_transition_duration(FADE_MS);
+        fade.set_halign(gtk::Align::Center);
+        fade.set_valign(gtk::Align::Start);
+
+        let slide = gtk::Revealer::new();
+        slide.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+        slide.set_transition_duration(SLIDE_MS);
+        slide.set_halign(gtk::Align::Center);
+        slide.set_valign(gtk::Align::Start);
+        slide.set_child(Some(&fade));
+
+        // `child_revealed` only reports *fully* revealed children, so it tells
+        // us exactly when the slide has settled — or fully backed out.
+        let panel: Rc<RefCell<Option<gtk::Widget>>> = Rc::new(RefCell::new(None));
+        let window_clone = window.clone();
+        let panel_clone = panel.clone();
+        slide.connect_child_revealed_notify(move |revealer| {
+            if revealer.is_child_revealed() {
+                if let Some(panel) = panel_clone.borrow().as_ref() {
+                    crate::anim::settle(panel, SPRING_MS, SPRING_AMPLITUDE);
+                }
+            } else {
+                window_clone.set_visible(false);
+            }
+        });
+
+        Flyout {
+            window: window.clone(),
+            slide,
+            fade,
+            panel,
         }
-    });
-}
-
-/// Present the surface and slide the panel out, focusing `focus` if given.
-pub fn show(window: &gtk::Window, revealer: &gtk::Revealer, focus: Option<&gtk::Widget>) {
-    window.present();
-    revealer.set_reveal_child(true);
-    if let Some(widget) = focus {
-        widget.grab_focus();
     }
-}
 
-/// Start sliding the panel back up; the surface hides itself when done.
-pub fn hide(revealer: &gtk::Revealer) {
-    revealer.set_reveal_child(false);
+    /// The revealer to drop into the window in the `view!`.
+    pub fn widget(&self) -> gtk::Revealer {
+        self.slide.clone()
+    }
+
+    /// Place the panel inside the revealer pair.
+    pub fn set_child<W: IsA<gtk::Widget> + Clone>(&self, child: &W) {
+        self.fade.set_child(Some(child));
+        *self.panel.borrow_mut() = Some(child.clone().upcast());
+    }
+
+    /// Present the surface and slide + fade the panel out, focusing `focus`.
+    pub fn show(&self, focus: Option<&gtk::Widget>) {
+        self.window.present();
+        self.fade.set_reveal_child(true);
+        self.slide.set_reveal_child(true);
+        if let Some(widget) = focus {
+            widget.grab_focus();
+        }
+    }
+
+    /// Slide + fade the panel back up; the surface hides itself when done.
+    pub fn hide(&self) {
+        self.fade.set_reveal_child(false);
+        self.slide.set_reveal_child(false);
+    }
 }
 
 /// Whether a click at `(x, y)` (in `window`'s coordinates) landed inside

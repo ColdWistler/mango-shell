@@ -224,6 +224,7 @@ impl SimpleComponent for WifiModel {
 
         let widgets = view_output!();
         root.set_popover(Some(&popover));
+        crate::anim::pop_in(&popover);
 
         refresh.connect_clicked({
             let sender = sender.clone();

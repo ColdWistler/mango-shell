@@ -83,6 +83,16 @@ const FADE_MS: u64 = 150;
 const MOVE_MS: u64 = 200;
 const CONFIRM_MS: u64 = 300;
 
+/// How far the glide overshoots its target before settling — a subtle spring.
+/// `1.0` is a plain ease, so keep this just above `1`.
+const GLIDE_OVERSHOOT: f64 = 1.12;
+
+/// The soft rim of light drawn behind the nearest cards: how far it reaches
+/// past the frame, how bright it gets, and how many strokes fake the blur.
+const GLOW_SPREAD: f64 = 24.0;
+const GLOW_STRENGTH: f64 = 0.5;
+const GLOW_PASSES: usize = 8;
+
 /// The animation tick.
 const FRAME_MS: u64 = 16;
 
@@ -120,19 +130,21 @@ fn depth_weight(d: f64) -> f64 {
 
 // --- Easing / layout helpers ----------------------------------------------
 
-/// A scalar eased from `from` to `to` with an in-out cubic curve.
+/// A scalar eased from `from` to `to`, with the curve chosen by the caller.
 struct Anim {
     from: f64,
     to: f64,
     start: Instant,
     ms: u64,
+    /// The easing curve applied to the 0..1 progress.
+    curve: fn(f64) -> f64,
 }
 
 impl Anim {
     /// The eased value, or `None` once the animation has run out.
     fn value(&self, now: Instant) -> Option<f64> {
         let t = (now - self.start).as_secs_f64() * 1000.0 / self.ms as f64;
-        (t < 1.0).then(|| self.from + (self.to - self.from) * ease(t))
+        (t < 1.0).then(|| self.from + (self.to - self.from) * (self.curve)(t))
     }
 }
 
@@ -143,6 +155,16 @@ fn ease(t: f64) -> f64 {
     } else {
         1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
     }
+}
+
+/// Ease-out with a small overshoot, for the glide's spring. At [`GLIDE_OVERSHOOT`]
+/// of `1.0` this becomes a plain ease; above it the card leans past its target
+/// before settling back.
+fn ease_out_back(t: f64) -> f64 {
+    let c1 = GLIDE_OVERSHOOT;
+    let c3 = c1 + 1.0;
+    let u = t - 1.0;
+    1.0 + c3 * u * u * u + c1 * u * u
 }
 
 /// The plugin's `falloff = 1 / (1 + distance²)`.
@@ -678,6 +700,7 @@ impl CarouselModel {
                 to: 1.0,
                 start: Instant::now(),
                 ms: FADE_MS,
+                curve: ease,
             });
         }
         self.search.set_text("");
@@ -700,6 +723,7 @@ impl CarouselModel {
                 to: 0.0,
                 start: Instant::now(),
                 ms: FADE_MS,
+                curve: ease,
             });
         }
         self.ensure_tick();
@@ -816,6 +840,7 @@ impl CarouselModel {
                     to,
                     start: Instant::now(),
                     ms: MOVE_MS,
+                    curve: ease_out_back,
                 });
             }
         }
@@ -958,6 +983,7 @@ impl CarouselModel {
                         to: 0.0,
                         start: now,
                         ms: FADE_MS,
+                        curve: ease,
                     });
                 }
                 busy = true;
@@ -1117,6 +1143,13 @@ fn paint_card(
     let hw = CARD_WIDTH * scale / 2.0;
     let hh = CARD_HEIGHT * scale / 2.0;
 
+    // A soft rim of light behind the nearest cards, strongest on the selected
+    // one, so it reads as a little glow without a real blur pass.
+    let glow = falloff(d);
+    if glow * alpha > 0.01 {
+        paint_glow(cr, cx, cy, hw, hh, SKEW, alpha * glow * GLOW_STRENGTH);
+    }
+
     let _ = cr.save();
     // The frame, filled black — the plugin's `borderWidth` ring.
     parallelogram(cr, cx, cy, hw, hh, SKEW);
@@ -1162,6 +1195,26 @@ fn paint_card(
     cr.scale(fit, fit);
     let _ = cr.set_source_surface(surface, 0.0, 0.0);
     let _ = cr.paint_with_alpha(alpha);
+    let _ = cr.restore();
+}
+
+/// A soft glow behind a card, faked with a few stroked outlines of decreasing
+/// width (cairo has no cheap blur). Drawn before the card so only the outer
+/// half of each stroke shows past the frame.
+fn paint_glow(cr: &cairo::Context, cx: f64, cy: f64, hw: f64, hh: f64, s: f64, strength: f64) {
+    if strength <= 0.0 {
+        return;
+    }
+    let _ = cr.save();
+    cr.set_line_join(cairo::LineJoin::Round);
+    for i in 0..GLOW_PASSES {
+        let t = (i as f64 + 1.0) / GLOW_PASSES as f64;
+        let width = GLOW_SPREAD * (1.0 - t) + 1.5;
+        parallelogram(cr, cx, cy, hw, hh, s);
+        cr.set_source_rgba(1.0, 1.0, 1.0, strength * 0.06);
+        cr.set_line_width(width);
+        let _ = cr.stroke();
+    }
     let _ = cr.restore();
 }
 

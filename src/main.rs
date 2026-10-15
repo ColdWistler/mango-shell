@@ -27,6 +27,7 @@
 //! layer surfaces belong to a single monitor, so the "shell" itself cannot be
 //! one surface. OkShell solves this exactly the same way.
 
+mod anim;
 mod bar;
 mod carousel;
 mod flyout;
