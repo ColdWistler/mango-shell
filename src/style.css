@@ -661,3 +661,193 @@ button.mango-theme-item:hover {
     min-height: 1px;
     margin: 4px 6px;
 }
+
+/* --- System applet popovers (Wi-Fi, volume, brightness) ---------------- */
+
+/* The bar widgets open these: a volume slider, the output-device list, the
+ * Wi-Fi radio + network list, and the brightness slider. They share one card
+ * look, matching the theme switcher popover above. */
+popover.mango-applet-popover > contents {
+    background-color: @layer2;
+    border: 1px solid @layer0_border;
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.mango-applet {
+    background: transparent;
+    min-width: 280px;
+}
+
+.mango-applet-title {
+    color: @on_surface;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 0 4px;
+}
+
+.mango-applet-sep {
+    background-color: @outline_variant;
+    min-height: 1px;
+    margin: 2px 4px;
+}
+
+.mango-applet-value {
+    color: @on_surface_variant;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.mango-applet-status {
+    color: @on_surface_variant;
+    font-size: 12px;
+    padding: 0 4px;
+}
+
+/* Icon-only buttons inside an applet (mute, refresh). */
+button.mango-applet-icon-button {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 9999px;
+    background-color: alpha(@on_surface, 0.06);
+    color: @on_surface;
+    -gtk-icon-size: 16px;
+}
+
+button.mango-applet-icon-button:hover {
+    background-color: alpha(@on_surface, 0.14);
+}
+
+/* Text buttons (Connect / Cancel). */
+button.mango-applet-button {
+    background-image: none;
+    background-color: alpha(@on_surface, 0.08);
+    border: none;
+    box-shadow: none;
+    border-radius: 9999px;
+    padding: 6px 14px;
+    min-height: 0;
+    color: @on_surface;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+button.mango-applet-button:hover {
+    background-color: alpha(@on_surface, 0.16);
+}
+
+button.mango-applet-button.suggested {
+    background-color: @primary;
+    color: @on_primary;
+}
+
+button.mango-applet-button.suggested:hover {
+    background-color: @primary;
+}
+
+/* One network / output-device row. */
+button.mango-applet-item {
+    background-image: none;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 10px;
+    padding: 6px 8px;
+    min-height: 0;
+    color: @on_surface;
+    font-size: 14px;
+}
+
+button.mango-applet-item:hover {
+    background-color: alpha(@on_surface, 0.08);
+}
+
+.mango-applet-item-icon {
+    color: @on_surface_variant;
+    -gtk-icon-size: 15px;
+}
+
+.mango-applet-item-lock {
+    color: @outline;
+    -gtk-icon-size: 13px;
+}
+
+.mango-applet-check {
+    color: @primary;
+    -gtk-icon-size: 15px;
+}
+
+/* Entry used by the Wi-Fi password prompt. */
+.mango-applet entry {
+    background-image: none;
+    background-color: alpha(@on_surface, 0.06);
+    color: @on_surface;
+    border: 1px solid @outline_variant;
+    border-radius: 10px;
+    padding: 6px 10px;
+    min-height: 22px;
+    caret-color: @primary;
+    box-shadow: none;
+}
+
+.mango-applet entry:focus {
+    border-color: @primary;
+    background-color: alpha(@on_surface, 0.09);
+}
+
+/* The radio switch in the Wi-Fi header. */
+switch.mango-switch {
+    background-color: alpha(@on_surface, 0.16);
+    border-radius: 9999px;
+}
+
+switch.mango-switch:checked {
+    background-color: @primary;
+}
+
+switch.mango-switch > slider {
+    background-color: @on_surface;
+    border: none;
+    border-radius: 9999px;
+    min-width: 18px;
+    min-height: 18px;
+    margin: 2px;
+}
+
+/* The volume / brightness slider. */
+scale.mango-slider trough {
+    background-color: alpha(@on_surface, 0.14);
+    border: none;
+    border-radius: 9999px;
+    min-height: 6px;
+}
+
+scale.mango-slider highlight {
+    background-color: @primary;
+    border-radius: 9999px;
+    min-height: 6px;
+}
+
+scale.mango-slider slider {
+    background-color: @on_surface;
+    border: none;
+    border-radius: 9999px;
+    min-width: 14px;
+    min-height: 14px;
+    margin: -4px 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.mango-applet scrollbar {
+    background: transparent;
+}
+
+.mango-applet scrollbar slider {
+    background-color: alpha(@on_surface, 0.22);
+    border-radius: 9999px;
+    min-width: 6px;
+    min-height: 6px;
+    margin: 2px;
+}

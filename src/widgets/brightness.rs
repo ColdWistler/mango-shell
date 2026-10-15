@@ -2,13 +2,16 @@
 //!
 //! The level is read straight from `/sys/class/backlight` (no daemon needed)
 //! on a background thread. Adjusting it is harder because that file is
-//! normally root-owned; scrolling tries, in order:
+//! normally root-owned; scrolling the bar widget, or dragging the slider in
+//! its popover, tries, in order:
 //!
 //! 1. writing the sysfs file (works if a udev rule grants access),
 //! 2. `brightnessctl set` (works if `brightnessctl` is installed),
 //! 3. `logind`'s `SetBrightness` over D-Bus (works for the active session).
 
+use std::cell::Cell;
 use std::process::Stdio;
+use std::rc::Rc;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::Duration;
 
@@ -37,20 +40,29 @@ struct Backlight {
 }
 
 enum Command {
+    /// Relative step in `-1.0..=1.0`.
     Adjust(f64),
+    /// Absolute level in `0.0..=1.0`.
+    Set(f64),
 }
 
 pub struct BrightnessModel {
     state: BrightnessState,
     /// The root, kept so availability can hide the whole widget.
-    widget: Option<gtk::Button>,
+    widget: Option<gtk::MenuButton>,
     commands: Option<Sender<Command>>,
+    slider: gtk::Scale,
+    percent: gtk::Label,
+    /// True while the slider is being set from the model, so its signal is
+    /// ignored (otherwise every poll would echo a command straight back).
+    syncing: Rc<Cell<bool>>,
 }
 
 #[derive(Debug)]
 pub enum BrightnessInput {
     Update(BrightnessState),
     Adjust(f64),
+    Set(f64),
 }
 
 #[relm4::component(pub)]
@@ -61,8 +73,10 @@ impl SimpleComponent for BrightnessModel {
 
     view! {
         #[root]
-        gtk::Button {
+        gtk::MenuButton {
             set_css_classes: &["mango-widget"],
+            set_always_show_arrow: false,
+            set_tooltip_text: Some("Brightness"),
 
             #[wrap(Some)]
             set_child = &gtk::Box {
@@ -93,14 +107,66 @@ impl SimpleComponent for BrightnessModel {
         let state = read_state().unwrap_or_default();
         root.set_visible(state.available);
 
+        // The popover holds a single slider.
+        let popover = gtk::Popover::new();
+        popover.set_has_arrow(false);
+        popover.add_css_class("mango-applet-popover");
+
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        content.add_css_class("mango-applet");
+
+        let title = gtk::Label::new(Some("Brightness"));
+        title.set_xalign(0.0);
+        title.add_css_class("mango-applet-title");
+        content.append(&title);
+
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row.set_valign(gtk::Align::Center);
+
+        row.append(&gtk::Image::from_icon_name("display-brightness-symbolic"));
+
+        let slider = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 100.0, 1.0);
+        slider.set_draw_value(false);
+        slider.set_hexpand(true);
+        slider.set_size_request(190, -1);
+        slider.add_css_class("mango-slider");
+        row.append(&slider);
+
+        let percent = gtk::Label::new(Some("—"));
+        percent.add_css_class("mango-applet-value");
+        percent.set_width_chars(4);
+        percent.set_xalign(1.0);
+        row.append(&percent);
+
+        content.append(&row);
+        popover.set_child(Some(&content));
+
+        let syncing = Rc::new(Cell::new(false));
         let mut model = BrightnessModel {
             state,
             widget: Some(root.clone()),
             commands: None,
+            slider: slider.clone(),
+            percent: percent.clone(),
+            syncing: syncing.clone(),
         };
 
         let widgets = view_output!();
+        root.set_popover(Some(&popover));
 
+        // Dragging the slider sets an absolute brightness.
+        slider.connect_value_changed({
+            let sender = sender.clone();
+            let syncing = syncing.clone();
+            move |slider| {
+                if syncing.get() {
+                    return;
+                }
+                sender.input(BrightnessInput::Set(slider.value() / 100.0));
+            }
+        });
+
+        // Scrolling the bar widget steps the brightness.
         let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
         scroll.connect_scroll({
             let sender = sender.clone();
@@ -116,6 +182,7 @@ impl SimpleComponent for BrightnessModel {
         root.add_controller(scroll);
 
         model.commands = Some(spawn_poller(sender));
+        model.sync();
 
         ComponentParts { model, widgets }
     }
@@ -127,10 +194,19 @@ impl SimpleComponent for BrightnessModel {
                 if let Some(widget) = &self.widget {
                     widget.set_visible(state.available);
                 }
+                self.sync();
             }
             BrightnessInput::Adjust(delta) => {
                 if let Some(commands) = &self.commands {
                     let _ = commands.send(Command::Adjust(delta));
+                }
+            }
+            BrightnessInput::Set(level) => {
+                self.state.level = level;
+                self.set_slider(level);
+                self.percent.set_text(&format!("{:.0}%", level * 100.0));
+                if let Some(commands) = &self.commands {
+                    let _ = commands.send(Command::Set(level));
                 }
             }
         }
@@ -138,6 +214,17 @@ impl SimpleComponent for BrightnessModel {
 }
 
 impl BrightnessModel {
+    fn sync(&self) {
+        self.set_slider(self.state.level);
+        self.percent.set_text(&format!("{:.0}%", self.state.level * 100.0));
+    }
+
+    fn set_slider(&self, level: f64) {
+        self.syncing.set(true);
+        self.slider.set_value((level * 100.0).clamp(0.0, 100.0));
+        self.syncing.set(false);
+    }
+
     fn label(&self) -> String {
         format!("{:.0}%", self.state.level * 100.0)
     }
@@ -158,11 +245,19 @@ fn spawn_poller(sender: ComponentSender<BrightnessModel>) -> Sender<Command> {
                 Err(RecvTimeoutError::Disconnected) => return,
             };
 
-            if let Some(Command::Adjust(delta)) = command
-                && let Some(backlight) = find_backlight()
-            {
-                let current = read_level(&backlight).unwrap_or(0.5);
-                apply(&backlight, current + delta, &mut session);
+            match command {
+                Some(Command::Adjust(delta)) => {
+                    if let Some(backlight) = find_backlight() {
+                        let current = read_level(&backlight).unwrap_or(0.5);
+                        apply(&backlight, current + delta, &mut session);
+                    }
+                }
+                Some(Command::Set(level)) => {
+                    if let Some(backlight) = find_backlight() {
+                        apply(&backlight, level, &mut session);
+                    }
+                }
+                None => {}
             }
 
             if let Some(state) = read_state() {

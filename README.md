@@ -161,7 +161,7 @@ sudo pacman -S --needed foot rofi   # defaults used by Mango's keybinds
 cargo install cargo-watch            # optional: auto-rebuild on save
 
 # The status widgets read the usual system services (all present on a normal
-# Mango session): PipeWire/WirePlumber (`wpctl`), NetworkManager (`nmcli`) and
+# Mango session): PipeWire/PulseAudio (`pactl`), NetworkManager (`nmcli`) and
 # systemd-logind (`busctl`). Only brightness is optional:
 sudo pacman -S --needed brightnessctl   # optional; see "Status indicators" below
 ```
@@ -288,10 +288,20 @@ background thread so a slow tool never freezes the bar:
 
 | Widget | Backend | Interaction |
 | --- | --- | --- |
-| **Wi-Fi** | NetworkManager (`nmcli`) | tooltip shows the SSID + signal; read-only |
-| **Volume** | PipeWire / WirePlumber (`wpctl`) | click toggles mute, scroll ±5 % |
-| **Brightness** | `/sys/class/backlight` | scroll ±5 % (see below) |
+| **Wi-Fi** | NetworkManager (`nmcli`) | click opens a popover: radio on/off, refresh, network list, connect (password prompt); scroll is free |
+| **Volume** | PipeWire / PulseAudio (`pactl`) | click opens a popover: slider, mute and output-device picker; scroll ±5 % |
+| **Brightness** | `/sys/class/backlight` | click opens a popover with a slider; scroll ±5 % (see below) |
 | **Tray** | `org.kde.StatusNotifierItem` over D-Bus | left = activate, middle = secondary, right = menu |
+
+Clicking **Wi-Fi** shows every visible network, strongest first with the active
+one on top. Picking an open network connects straight away; a secured one opens
+an inline password prompt (leave it empty to reuse saved credentials). Errors
+reported by `nmcli` are shown under the header.
+
+Clicking **Volume** shows a slider, a mute button and the list of output
+devices (sinks); picking one makes it the default output. The bar icon and
+percentage update live while you drag.
+
 
 The **system tray** widget *hosts* `org.kde.StatusNotifierWatcher` itself, so
 no other tray host is needed — any app that publishes a `StatusNotifierItem`
@@ -300,14 +310,14 @@ rendered into a GTK popover. Icons come from the icon theme when the item names
 one, and are otherwise decoded from the raw `IconPixmap`.
 
 Adjusting the backlight is normally the awkward part, because the sysfs file is
-root-owned. Scrolling tries, in order:
+root-owned. Both the slider and scrolling try, in order:
 
 1. writing `/sys/class/backlight/<dev>/brightness` (works with a udev rule),
 2. `brightnessctl set` (if installed — `sudo pacman -S brightnessctl`),
 3. logind's `SetBrightness` over D-Bus (works for the active session with no
    extra packages or permissions).
 
-The other backends (`wpctl`, `nmcli`, `busctl`) ship with PipeWire/WirePlumber,
+The other backends (`pactl`, `nmcli`, `busctl`) ship with PipeWire/PulseAudio,
 NetworkManager and systemd, which a Mango session already has.
 
 ---
@@ -358,9 +368,9 @@ src/
     tags.rs         TagsModel: clickable tag buttons (occupied/active/urgent).
     theme.rs        ThemeButtonModel: the bar's round theme button with its
                     popover of palettes (live cairo previews + checkmarks).
-    volume.rs       VolumeModel: wpctl-backed volume/mute, click + scroll.
-    wifi.rs         WifiModel: nmcli-backed SSID/signal readout.
-    brightness.rs   BrightnessModel: sysfs backlight, scroll to adjust.
+    volume.rs       VolumeModel: pactl-backed volume/mute + output picker.
+    wifi.rs         WifiModel: nmcli-backed radio, network list + connect.
+    brightness.rs   BrightnessModel: sysfs backlight, slider + scroll.
     tray.rs         TrayModel: StatusNotifierItem host + DBusMenu popover.
   style.css         Base Material 3 theme (shapes + default tokens), loaded
                     into a custom CssProvider so it can be reloaded live. The
