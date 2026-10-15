@@ -934,3 +934,67 @@ scale.mango-slider slider {
     min-height: 6px;
     margin: 2px;
 }
+
+/* --- Power menu (battery + session actions) ---------------------------- */
+
+/* A little wider than the other applets so five actions fit on one row. */
+.mango-power-menu {
+    min-width: 320px;
+}
+
+.mango-power-battery {
+    padding: 2px 4px 4px;
+}
+
+.mango-power-battery-icon {
+    color: @on_surface;
+    -gtk-icon-size: 26px;
+}
+
+.mango-power-percent {
+    color: @on_surface;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+/* One action: an icon over a caption. */
+button.mango-power-action {
+    background-image: none;
+    background-color: alpha(@on_surface, 0.06);
+    border: none;
+    box-shadow: none;
+    border-radius: 14px;
+    padding: 10px 4px;
+    min-height: 0;
+    color: @on_surface;
+    transition: background-color 120ms ease;
+}
+
+button.mango-power-action:hover {
+    background-color: alpha(@on_surface, 0.14);
+}
+
+button.mango-power-action:active {
+    background-color: alpha(@on_surface, 0.20);
+}
+
+.mango-power-action-icon {
+    color: inherit;
+    -gtk-icon-size: 20px;
+}
+
+.mango-power-action-label {
+    color: inherit;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* Destructive actions (shut down) read in the error colour. */
+button.mango-power-action.danger {
+    color: @error;
+    background-color: alpha(@error, 0.14);
+}
+
+button.mango-power-action.danger:hover {
+    background-color: alpha(@error, 0.26);
+}

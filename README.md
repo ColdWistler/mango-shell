@@ -22,8 +22,8 @@ Wayland shell — see [How this maps to OkShell](#how-this-maps-to-okshell).
 
 **Home** — the shell on the desktop: a full-width translucent bar hugging the
 top edge, with pill clusters for the launcher and wallpaper buttons, the
-workspace tags, the clock, and the Wi-Fi / volume / brightness / tray cluster
-on the right.
+workspace tags, the clock, and the Wi-Fi / volume / brightness / battery /
+tray cluster on the right.
 
 ![mango-shell on the desktop](assets/screenshots/home.webp)
 
@@ -56,9 +56,11 @@ the "hug" bar layout. Concretely:
   **occupied** tags get a subtle `secondary container` pill, and the **active**
   tag is a filled `primary` pill with `on primary` text. `urgent` uses the
   error container.
-- The right cluster holds the **system tray** plus **Wi-Fi, volume and
-  brightness** readouts, each pill-shaped and hidden when it has nothing to
-  show (no backlight, no tray items, and so on).
+- The right cluster holds the **system tray** plus **Wi-Fi, volume,
+  brightness and battery** readouts, each pill-shaped and hidden when it has
+  nothing to show (no backlight, no tray items, and so on). The **battery**
+  widget stays visible on a desktop (as a power glyph) and opens the session
+  menu — lock, log out, suspend, reboot, shut down.
 - The launcher, wallpaper picker and theme gallery are **fly-outs**: instead of
   a full-screen scrim they hang just below the bar and slide *and fade* down
   out of it with a small spring, floating over whatever window is open. Each is
@@ -212,6 +214,10 @@ cargo install cargo-watch            # optional: auto-rebuild on save
 # systemd-logind (`busctl`). Brightness and the audio visualizer are optional:
 sudo pacman -S --needed brightnessctl   # optional; see "Status indicators" below
 sudo pacman -S --needed cava            # optional; audio visualizer, see below
+
+# The power menu can lock the session. Mango implements the wlr session-lock
+# protocol but ships no locker, so install one for the "Lock" action to work:
+sudo pacman -S --needed swaylock        # optional; also: gtklock, hyprlock, …
 ```
 
 Check your toolchain:
@@ -339,6 +345,7 @@ background thread so a slow tool never freezes the bar:
 | **Wi-Fi** | NetworkManager (`nmcli`) | click opens a popover: radio on/off, refresh, network list, connect (password prompt); scroll is free |
 | **Volume** | PipeWire / PulseAudio (`pactl`) | click opens a popover: slider, mute and output-device picker; scroll ±5 % |
 | **Brightness** | `/sys/class/backlight` | click opens a popover with a slider; scroll ±5 % (see below) |
+| **Battery / power** | `/sys/class/power_supply` | shows the charge (and a matching icon); click opens the battery status plus a session menu: lock, log out, suspend, reboot, shut down |
 | **Visualizer** | [`cava`](https://github.com/karlstav/cava) (audio spectrum) | live spectrum bars next to the indicators; optional, hides itself when `cava` is absent |
 | **Tray** | `org.kde.StatusNotifierItem` over D-Bus | left = activate, middle = secondary, right = menu |
 
@@ -350,6 +357,24 @@ reported by `nmcli` are shown under the header.
 Clicking **Volume** shows a slider, a mute button and the list of output
 devices (sinks); picking one makes it the default output. The bar icon and
 percentage update live while you drag.
+
+Clicking **Battery** shows the charge and the charging state (Charging, Not
+charging, Discharging, Fully charged) above a row of session actions:
+
+| Action | Command |
+| --- | --- |
+| **Lock** | the first session locker found — `swaylock`, `gtklock`, `hyprlock`, `waylock` or `swaylock-effects` — else `loginctl lock-session` |
+| **Log out** | `mmsg dispatch quit` (Mango's own exit), else `loginctl terminate-session` |
+| **Suspend** | `systemctl suspend` |
+| **Reboot** | `systemctl reboot` |
+| **Shut down** | `systemctl poweroff` |
+
+The charge is read straight from `/sys/class/power_supply` (no daemon); on a
+machine with no battery the bar shows a power glyph and the popover keeps just
+the actions. **Lock needs a session locker**: Mango implements the wlr
+session-lock protocol but ships none, so install one (`sudo pacman -S swaylock`,
+`gtklock`, `hyprlock`, …). Without one, `Lock` falls back to
+`loginctl lock-session`, which only takes effect once a locker is listening.
 
 The **audio visualizer** is a small pill of live spectrum bars beside the
 status cluster. It spawns [`cava`](https://github.com/karlstav/cava) with a
@@ -439,6 +464,8 @@ src/
     volume.rs       VolumeModel: pactl-backed volume/mute + output picker.
     wifi.rs         WifiModel: nmcli-backed radio, network list + connect.
     brightness.rs   BrightnessModel: sysfs backlight, slider + scroll.
+    power.rs        PowerModel: sysfs battery + a session menu (lock, log out,
+                    suspend, reboot, shut down).
     tray.rs         TrayModel: StatusNotifierItem host + DBusMenu popover.
     visualizer.rs   VisualizerModel: cava-backed spectrum bars in a cairo
                     DrawingArea; hides itself (and retries) when cava is absent.
@@ -490,7 +517,8 @@ structure here. The relevant pieces:
 | `widgets/` | `crates/okshell-frame/src/bars/bar_widgets/` | One `SimpleComponent` per widget |
 | `widgets/clock.rs` | `bar_widgets/clock.rs` | Same idea: a `glib` timeout whose `SourceId` is removed in `shutdown()` |
 | `widgets/tags.rs` | `bar_widgets/hyprland_workspaces.rs` | Per-monitor workspace/tag buttons. OkShell uses a `DynamicBox` factory; this starter rebuilds a plain `gtk::Box` since there are only a handful of tags |
-| `widgets/volume.rs`, `widgets/wifi.rs`, `widgets/brightness.rs` | `bar_widgets/audio.rs`, `bar_widgets/network.rs`, `bar_widgets/battery.rs` | Small poll-and-display widgets; each runs its backend on a background thread and reports back with `ComponentSender::input` |
+| `widgets/volume.rs`, `widgets/wifi.rs`, `widgets/brightness.rs` | `bar_widgets/audio.rs`, `bar_widgets/network.rs`, `bar_widgets/brightness.rs` | Small poll-and-display widgets; each runs its backend on a background thread and reports back with `ComponentSender::input` |
+| `widgets/power.rs` | `bar_widgets/battery.rs` | Battery read from sysfs plus a session menu; the bar widget opens a popover of one-shot actions rather than exposing state |
 | `widgets/tray.rs` | `bar_widgets/sys_tray.rs` | `StatusNotifierItem` host + `DBusMenu`. OkShell uses its own D-Bus layer; this uses the `system-tray` crate on a dedicated Tokio runtime thread |
 | `mango.rs` | `crates/okshell-core/src/ipc.rs` | OkShell talks to Hyprland via `wayle`; here `mango-ipc` plays the same role |
 
@@ -518,9 +546,9 @@ Notable differences, and why:
   port another polybar layout (the remaining `simple/` themes are `shapes`,
   `forest`, `panels` and `pwidgets`; `panels` and `pwidgets` need extra
   widget types before they map cleanly onto a single top bar).
-- **More modules.** Battery (UPower), media player (MPRIS), notifications,
-  keyboard layout, a power/session menu. (Wi-Fi, volume, brightness and the
-  system tray are already in `widgets/`.)
+- **More modules.** Media player (MPRIS), notifications, keyboard layout.
+  (Battery + the power/session menu, Wi-Fi, volume, brightness and the system
+  tray are already in `widgets/`.)
 - **Launcher polish.** The launcher matches by substring; a fuzzy scorer,
   MRU/recency ordering, and launching `.desktop` actions would make it feel
   closer to rofi/fuzzel.

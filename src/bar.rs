@@ -23,6 +23,7 @@ use crate::mango::{self, TagView};
 use crate::panel::{Panel, Sep, Slot};
 use crate::widgets::brightness::BrightnessModel;
 use crate::widgets::clock::ClockModel;
+use crate::widgets::power::PowerModel;
 use crate::widgets::tags::{TagsInput, TagsModel, TagsOutput};
 use crate::widgets::theme::{ThemeButtonInput, ThemeButtonModel, ThemeButtonOutput};
 use crate::widgets::tray::TrayModel;
@@ -85,6 +86,8 @@ pub struct BarModel {
     volume: Controller<VolumeModel>,
     #[allow(dead_code)]
     brightness: Controller<BrightnessModel>,
+    #[allow(dead_code)]
+    power: Controller<PowerModel>,
     #[allow(dead_code)]
     visualizer: Controller<VisualizerModel>,
     theme_button: Controller<ThemeButtonModel>,
@@ -181,6 +184,10 @@ impl SimpleComponent for BarModel {
         let wifi = WifiModel::builder().launch(()).detach();
         let volume = VolumeModel::builder().launch(()).detach();
         let brightness = BrightnessModel::builder().launch(()).detach();
+        // Battery + the session menu (lock / log out / suspend / reboot /
+        // shut down); always visible, so a desktop without a battery still
+        // gets the power menu.
+        let power = PowerModel::builder().launch(()).detach();
         // The audio visualizer owns its own pill (it hides as a whole when
         // `cava` is unavailable), so it is appended as-is below.
         let visualizer = VisualizerModel::builder().launch(()).detach();
@@ -223,6 +230,7 @@ impl SimpleComponent for BarModel {
         system_cluster.append(wifi.widget());
         system_cluster.append(volume.widget());
         system_cluster.append(brightness.widget());
+        system_cluster.append(power.widget());
 
         // The audio visualizer is its own pill (its root already carries
         // `mango-group`), so it is appended as-is and placed in the same slot
@@ -268,6 +276,7 @@ impl SimpleComponent for BarModel {
             wifi,
             volume,
             brightness,
+            power,
             visualizer,
             theme_button,
             start_box,
