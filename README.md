@@ -18,6 +18,29 @@ Wayland shell — see [How this maps to OkShell](#how-this-maps-to-okshell).
 
 ---
 
+## Screenshots
+
+**Home** — the shell on the desktop: a full-width translucent bar hugging the
+top edge, with pill clusters for the launcher and wallpaper buttons, the
+workspace tags, the clock, and the Wi-Fi / volume / brightness / tray cluster
+on the right.
+
+![mango-shell on the desktop](assets/screenshots/home.webp)
+
+**Panels** — the bar layout is configurable; the panel picker cycles through the
+layouts ported from [adi1090x/polybar-themes](https://github.com/adi1090x/polybar-themes),
+each previewed live before you apply it.
+
+![Panel layouts](assets/screenshots/panel.webp)
+
+**Themed from the wallpaper** — the optional user stylesheet lets
+[matugen](https://github.com/InioX/matugen) (or pywal) recolour the shell to
+match the current wallpaper.
+
+![Themed from the wallpaper with matugen](assets/screenshots/matugen.webp)
+
+---
+
 ## Look & feel
 
 The theme follows [**pctrade/end4-pC**](https://github.com/pctrade/end4-pC)
