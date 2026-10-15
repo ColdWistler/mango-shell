@@ -103,14 +103,14 @@ const DECODE_BOX: (i32, i32) = (600, 840);
 /// Pointer parallax: as the pointer crosses the overlay the centre card's
 /// image drifts up to this many pixels towards it. Outer cards drift less, so
 /// the picture reads as sunk behind its frame.
-const PARALLAX_POINTER: f64 = 30.0;
+const PARALLAX_POINTER: f64 = 60.0;
 
 /// Motion parallax: while the carousel glides, each image lags its frame by
 /// this fraction of the per-frame travel, so a slide has a little depth.
-const PARALLAX_SCROLL: f64 = 0.25;
+const PARALLAX_SCROLL: f64 = 0.6;
 
 /// How much the image is over-scaled so a drifting one still covers the frame.
-const PARALLAX_OVERSCAN: f64 = 1.16;
+const PARALLAX_OVERSCAN: f64 = 1.25;
 
 /// Depth weight for the drift: the centre card (`falloff` = 1) drifts fully,
 /// distant cards about a third as much.
@@ -1152,7 +1152,7 @@ fn paint_card(
     let (px_n, py_n) = ((px_n2 * 2.0).clamp(-1.0, 1.0), (py_n2 * 2.0).clamp(-1.0, 1.0));
     let depth = depth_weight(d);
     let ox = px_n * PARALLAX_POINTER * depth + (-scene.velocity) * PARALLAX_SCROLL * depth * CARD_WIDTH;
-    let oy = py_n * PARALLAX_POINTER * depth * 0.6;
+    let oy = py_n * (PARALLAX_POINTER * 0.5) * depth;
     let mut dx = ox;
     let mut dy = oy;
     let slack_x = (scaled_w - box_w).max(0.0) / 2.0;
