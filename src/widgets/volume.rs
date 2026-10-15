@@ -9,6 +9,7 @@
 //! server never blocks the GTK main loop.
 
 use std::cell::Cell;
+use std::os::fd::AsRawFd;
 use std::rc::Rc;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::Duration;
@@ -19,8 +20,13 @@ use relm4::prelude::*;
 
 /// The PipeWire/PulseAudio default sink.
 const DEFAULT_SINK: &str = "@DEFAULT_SINK@";
-/// How often the sink is re-read, in milliseconds.
-const POLL_MS: u64 = 1500;
+/// How long to wait between non-blocking checks of `pactl subscribe`'s output
+/// while a subscription is active. The wait spawns nothing.
+const EVENT_WAIT_MS: u64 = 200;
+/// Fallback re-read interval, used only when `pactl subscribe` is unavailable.
+/// While it is available the sink is re-read on change events instead, so the
+/// bar never spawns `pactl` on a timer.
+const POLL_MS: u64 = 10_000;
 /// Percent added or removed per scroll notch.
 const STEP: i32 = 5;
 
@@ -393,47 +399,178 @@ fn build_sink_row(
     (row, check)
 }
 
-/// Poll `pactl` forever on a background thread.
+/// Drive the volume widget from a single background thread.
+///
+/// The sink is re-read when `pactl subscribe` reports a change (a volume, mute
+/// or default-sink change), so the bar no longer spawns `pactl` on a timer.
+/// Only when no subscription is available does it fall back to the slow
+/// [`POLL_MS`] poll. The thread exits — killing the subscription — as soon as
+/// its command channel disconnects, so rebuilding the bar never leaves a
+/// `pactl subscribe` process behind.
 fn spawn_poller(sender: ComponentSender<VolumeModel>) -> Sender<Command> {
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
+        let mut subscriber = Subscriber::start();
+
+        // Paint immediately with a first read.
+        if let Some(state) = read_state() {
+            sender.input(VolumeInput::Update(state));
+        }
+
         loop {
-            let command = match rx.recv_timeout(Duration::from_millis(POLL_MS)) {
-                Ok(command) => Some(command),
-                Err(RecvTimeoutError::Timeout) => None,
-                Err(RecvTimeoutError::Disconnected) => return,
+            // While subscribed, wake often enough to notice an event promptly;
+            // the wait spawns nothing, unlike a subprocess poll.
+            let wait = if subscriber.is_active() {
+                Duration::from_millis(EVENT_WAIT_MS)
+            } else {
+                Duration::from_millis(POLL_MS)
             };
 
-            match command {
-                Some(Command::SetVolume(level)) => {
-                    let pct = (level * 100.0).round().clamp(0.0, 150.0) as i32;
-                    run_pactl(&["set-sink-volume", DEFAULT_SINK, &format!("{pct}%")]);
+            let mut refresh = false;
+            match rx.recv_timeout(wait) {
+                Ok(command) => {
+                    run_command(command);
+                    refresh = true;
                 }
-                Some(Command::Adjust(delta)) => {
-                    let step = if delta >= 0 {
-                        format!("+{delta}%")
-                    } else {
-                        format!("{delta}%")
-                    };
-                    run_pactl(&["set-sink-volume", DEFAULT_SINK, &step]);
-                }
-                Some(Command::ToggleMute) => {
-                    run_pactl(&["set-sink-mute", DEFAULT_SINK, "toggle"]);
-                }
-                Some(Command::SetDefaultSink(name)) => {
-                    run_pactl(&["set-default-sink", &name]);
-                }
-                None => {}
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => return,
             }
 
-            if let Some(state) = read_state() {
+            if subscriber.drain_changed() {
+                refresh = true;
+            }
+            if !subscriber.is_active() {
+                // Subscription lost (or `pactl` missing): keep a slow poll and
+                // try to re-establish it.
+                subscriber = Subscriber::start();
+                refresh = true;
+            }
+
+            if refresh && let Some(state) = read_state() {
                 sender.input(VolumeInput::Update(state));
             }
         }
     });
 
     tx
+}
+
+/// Run one user command against the default sink.
+fn run_command(command: Command) {
+    match command {
+        Command::SetVolume(level) => {
+            let pct = (level * 100.0).round().clamp(0.0, 150.0) as i32;
+            run_pactl(&["set-sink-volume", DEFAULT_SINK, &format!("{pct}%")]);
+        }
+        Command::Adjust(delta) => {
+            let step = if delta >= 0 {
+                format!("+{delta}%")
+            } else {
+                format!("{delta}%")
+            };
+            run_pactl(&["set-sink-volume", DEFAULT_SINK, &step]);
+        }
+        Command::ToggleMute => {
+            run_pactl(&["set-sink-mute", DEFAULT_SINK, "toggle"]);
+        }
+        Command::SetDefaultSink(name) => {
+            run_pactl(&["set-default-sink", &name]);
+        }
+    }
+}
+
+/// A running `pactl subscribe`, read without ever blocking so the poll loop can
+/// also service commands. Killed on drop.
+struct Subscriber {
+    child: Option<std::process::Child>,
+    stdout: Option<std::process::ChildStdout>,
+}
+
+impl Subscriber {
+    fn start() -> Self {
+        let spawned = std::process::Command::new("pactl")
+            .arg("subscribe")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+
+        match spawned {
+            Ok(mut child) => match child.stdout.take() {
+                Some(stdout) => {
+                    set_nonblocking(&stdout);
+                    Subscriber {
+                        child: Some(child),
+                        stdout: Some(stdout),
+                    }
+                }
+                None => Subscriber {
+                    child: Some(child),
+                    stdout: None,
+                },
+            },
+            Err(_) => Subscriber {
+                child: None,
+                stdout: None,
+            },
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        self.stdout.is_some()
+    }
+
+    /// Read every pending event without blocking; `true` if any arrived.
+    fn drain_changed(&mut self) -> bool {
+        let Some(stdout) = self.stdout.as_mut() else {
+            return false;
+        };
+        let mut buffer = [0u8; 1024];
+        let mut changed = false;
+        loop {
+            match std::io::Read::read(stdout, &mut buffer) {
+                // EOF: the subscription ended.
+                Ok(0) => {
+                    self.stop();
+                    break;
+                }
+                Ok(_) => changed = true,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(_) => {
+                    self.stop();
+                    break;
+                }
+            }
+        }
+        changed
+    }
+
+    fn stop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        self.stdout = None;
+    }
+}
+
+impl Drop for Subscriber {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Put a file descriptor into non-blocking mode so `pactl subscribe` can be
+/// drained without stalling the loop.
+fn set_nonblocking(fd: &impl AsRawFd) {
+    let raw = fd.as_raw_fd();
+    // SAFETY: `fcntl` only touches the descriptor's own flags.
+    unsafe {
+        let flags = libc::fcntl(raw, libc::F_GETFL);
+        if flags >= 0 {
+            libc::fcntl(raw, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+    }
 }
 
 fn run_pactl(args: &[&str]) {
