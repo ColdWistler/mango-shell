@@ -241,6 +241,15 @@ window.mango-bar .mango-widget-static {
     min-width: 30px;
 }
 
+/* --- Audio visualizer ------------------------------------------------- */
+
+/* The bars are painted by `visualizer.rs`, not by CSS; this only picks the
+ * paint colour. Override it in `~/.config/mango-shell/style.css` to taste. */
+window.mango-bar .mango-visualizer {
+    color: @primary;
+    padding: 0 8px;
+}
+
 /* --- System tray ------------------------------------------------------ */
 
 window.mango-bar button.mango-tray-item {

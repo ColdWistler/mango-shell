@@ -26,6 +26,7 @@ use crate::widgets::clock::ClockModel;
 use crate::widgets::tags::{TagsInput, TagsModel, TagsOutput};
 use crate::widgets::theme::{ThemeButtonInput, ThemeButtonModel, ThemeButtonOutput};
 use crate::widgets::tray::TrayModel;
+use crate::widgets::visualizer::VisualizerModel;
 use crate::widgets::volume::VolumeModel;
 use crate::widgets::wifi::WifiModel;
 
@@ -84,6 +85,8 @@ pub struct BarModel {
     volume: Controller<VolumeModel>,
     #[allow(dead_code)]
     brightness: Controller<BrightnessModel>,
+    #[allow(dead_code)]
+    visualizer: Controller<VisualizerModel>,
     theme_button: Controller<ThemeButtonModel>,
     /// The three CentreBox slots, already populated from the panel layout.
     start_box: gtk::Box,
@@ -178,6 +181,9 @@ impl SimpleComponent for BarModel {
         let wifi = WifiModel::builder().launch(()).detach();
         let volume = VolumeModel::builder().launch(()).detach();
         let brightness = BrightnessModel::builder().launch(()).detach();
+        // The audio visualizer owns its own pill (it hides as a whole when
+        // `cava` is unavailable), so it is appended as-is below.
+        let visualizer = VisualizerModel::builder().launch(()).detach();
         // The theme menu lives in the bar but the stylesheet lives in the
         // shell, so its choices go straight to the bar's output.
         let theme_button = ThemeButtonModel::builder().launch(init.theme).forward(
@@ -218,6 +224,11 @@ impl SimpleComponent for BarModel {
         system_cluster.append(volume.widget());
         system_cluster.append(brightness.widget());
 
+        // The audio visualizer is its own pill (its root already carries
+        // `mango-group`), so it is appended as-is and placed in the same slot
+        // as the system indicators.
+        let visualizer_widget = visualizer.widget().clone().upcast::<gtk::Widget>();
+
         // Which monitor this bar belongs to.
         let desk_cluster = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
         let name_label = gtk::Label::new(Some(&init.name));
@@ -231,6 +242,7 @@ impl SimpleComponent for BarModel {
             (panel.clock, clock_cluster.upcast()),
             (panel.tray, tray_widget),
             (panel.system, system_cluster.upcast()),
+            (panel.system, visualizer_widget),
             (panel.desk, desk_cluster.upcast()),
         ];
 
@@ -256,6 +268,7 @@ impl SimpleComponent for BarModel {
             wifi,
             volume,
             brightness,
+            visualizer,
             theme_button,
             start_box,
             center_box,
