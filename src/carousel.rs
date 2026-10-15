@@ -36,7 +36,7 @@
 //!
 //! [wallpaperCarousel]: https://github.com/motor-dev/wallpaperCarousel
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -103,10 +103,18 @@ const SCROLL_COOLDOWN_MS: u64 = 80;
 /// clamps (its `standard` mode).
 const WRAP: bool = true;
 
-/// Thumbnails are fitted into this box — twice the card so the selected one
-/// stays sharp when it scales up — then centre-cropped to the card's aspect
-/// ratio.
-const DECODE_BOX: (i32, i32) = (600, 840);
+/// Thumbnails are decoded to the size the card is actually painted at, so the
+/// previews stay crisp (no upscaling) without over-decoding huge wallpapers.
+/// The selected card paints at ~`CARD_WIDTH × SELECTED_SCALE`, so a modest box
+/// around that is enough; centre-cropped to the card's aspect ratio.
+const DECODE_BOX: (i32, i32) = (520, 728);
+
+/// Extra decoded cards kept beyond the ones on screen, on each side.
+const THUMB_MARGIN: isize = 2;
+/// Extra decoded cards kept beyond that before a thumbnail is evicted.
+const THUMB_KEEP_MARGIN: isize = 4;
+/// Screen width assumed when the canvas has not been allocated yet.
+const THUMB_FALLBACK_WIDTH: f64 = 1920.0;
 
 // --- Parallax -------------------------------------------------------------
 
@@ -120,7 +128,9 @@ const PARALLAX_POINTER: f64 = 120.0;
 const PARALLAX_SCROLL: f64 = 0.9;
 
 /// How much the image is over-scaled so a drifting one still covers the frame.
-const PARALLAX_OVERSCAN: f64 = 1.5;
+/// Kept at `1.0`: any margin here would zoom the picture in and crop it, so
+/// the preview shows the whole card instead.
+const PARALLAX_OVERSCAN: f64 = 1.0;
 
 /// Depth weight for the drift: the centre card (`falloff` = 1) drifts fully,
 /// distant cards about a third as much.
@@ -190,8 +200,13 @@ struct Scene {
     paths: Vec<PathBuf>,
     /// Lowercased file names, parallel to `paths`, for the filter.
     names: Vec<String>,
-    /// One decoded card image per wallpaper (worker → main thread).
+    /// One decoded card image per wallpaper (worker → main thread). Only the
+    /// thumbnails near the selection are populated; the rest stay `None` and
+    /// are decoded on demand, then evicted once the selection moves away.
     thumbs: Vec<Option<cairo::ImageSurface>>,
+    /// Whether a decode has been requested for this image index, so the same
+    /// worker is not spawned twice for one wallpaper.
+    thumb_requested: Vec<bool>,
     /// Indices into `paths` matching the current query.
     matches: Vec<usize>,
     /// The active lowercased query (empty when unfiltered).
@@ -217,9 +232,8 @@ struct Scene {
     pointer: Option<(f64, f64)>,
     /// Cards travelled per frame on the last tick, for the motion parallax.
     velocity: f64,
-    /// Thumbnail loading progress.
-    loading: bool,
-    loaded: usize,
+    /// Thumbnail decodes still in flight.
+    pending: usize,
 }
 
 impl Scene {
@@ -344,8 +358,11 @@ pub struct CarouselModel {
     status: gtk::Label,
     empty: gtk::Box,
     scene: Rc<RefCell<Scene>>,
-    /// Whether the animation tick is running.
-    ticking: Rc<Cell<bool>>,
+    /// The animation tick's timer, while one is running. Owning the `SourceId`
+    /// (rather than a shared flag the callback checks) means there is exactly
+    /// one timer at a time: `tick` stops it directly when it goes idle, so a
+    /// burst of navigation can't leave several timers ticking at once.
+    tick: Option<glib::SourceId>,
     sender: ComponentSender<Self>,
     /// The active wallpaper, centred on the next open.
     current: Option<PathBuf>,
@@ -398,6 +415,7 @@ impl SimpleComponent for CarouselModel {
         // so the first frame is already framed (the plugin's `tryFocus`).
         let scene = Rc::new(RefCell::new(Scene {
             thumbs: Vec::new(),
+            thumb_requested: Vec::new(),
             matches: Vec::new(),
             query: String::new(),
             search_open: false,
@@ -411,14 +429,14 @@ impl SimpleComponent for CarouselModel {
             hover: None,
             pointer: None,
             velocity: 0.0,
-            loading: false,
-            loaded: 0,
+            pending: 0,
             paths,
             names,
         }));
         {
             let mut scene = scene.borrow_mut();
             scene.thumbs = scene.paths.iter().map(|_| None).collect();
+            scene.thumb_requested = scene.paths.iter().map(|_| false).collect();
             if let Some(current) = &current
                 && let Some(image) = scene.paths.iter().position(|path| path == current)
             {
@@ -609,14 +627,6 @@ impl SimpleComponent for CarouselModel {
             search_sender.input(CarouselInput::Search(entry.text().to_string()));
         });
 
-        // Pre-cache every thumbnail at boot, like the plugin does.
-        let loading = !scene.borrow().paths.is_empty();
-        if loading {
-            scene.borrow_mut().loading = true;
-            let paths = scene.borrow().paths.clone();
-            spawn_loader(paths, sender.clone());
-        }
-
         let model = CarouselModel {
             window: root.clone(),
             canvas,
@@ -624,12 +634,16 @@ impl SimpleComponent for CarouselModel {
             status,
             empty,
             scene,
-            ticking: Rc::new(Cell::new(false)),
+            tick: None,
             sender,
             current,
             last_status: String::new(),
             last_scroll: Instant::now() - Duration::from_secs(1),
         };
+
+        // Nothing is decoded at boot: the carousel starts hidden and holdings
+        // are released while it is closed, so `show` primes the neighbourhood
+        // when it is actually opened.
 
         let widgets = view_output!();
 
@@ -666,6 +680,13 @@ impl SimpleComponent for CarouselModel {
                 height,
                 bgra,
             } => self.set_thumb(index, width, height, bgra),
+        }
+    }
+
+    /// Stop the animation tick when the component goes away.
+    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
+        if let Some(tick) = self.tick.take() {
+            tick.remove();
         }
     }
 }
@@ -706,6 +727,8 @@ impl CarouselModel {
         self.search.set_text("");
         self.search.set_visible(false);
         self.window.present();
+        // Re-prime the neighbourhood; it was released when the overlay closed.
+        self.ensure_thumbs();
         self.refresh_status();
         self.ensure_tick();
     }
@@ -785,6 +808,7 @@ impl CarouselModel {
         scene.pos = scene.target as f64;
         scene.anim = None;
         drop(scene);
+        self.ensure_thumbs();
         self.refresh_status();
         self.canvas.queue_draw();
     }
@@ -845,6 +869,7 @@ impl CarouselModel {
             }
         }
         self.ensure_tick();
+        self.ensure_thumbs();
         self.canvas.queue_draw();
         self.refresh_status();
     }
@@ -919,16 +944,101 @@ impl CarouselModel {
         };
         {
             let mut scene = self.scene.borrow_mut();
+            // The overlay may have been closed while this decode was in flight;
+            // drop it again and clear the request flag so it can be decoded
+            // afresh the next time the carousel is opened.
+            if scene.hide_when_faded || (!self.window.is_visible() && scene.fade <= f64::EPSILON) {
+                scene.pending = scene.pending.saturating_sub(1);
+                if let Some(requested) = scene.thumb_requested.get_mut(index) {
+                    *requested = false;
+                }
+                return;
+            }
             if let Some(slot) = scene.thumbs.get_mut(index) {
                 *slot = surface;
             }
-            scene.loaded += 1;
-            if scene.loaded >= scene.paths.len() {
-                scene.loading = false;
-            }
+            scene.pending = scene.pending.saturating_sub(1);
         }
         self.refresh_status();
         self.canvas.queue_draw();
+    }
+
+    /// Decode the thumbnails around the selection and drop the ones far enough
+    /// away. Called whenever the selection moves, on open, and after a filter
+    /// change, so memory stays proportional to the visible window rather than
+    /// the whole wallpaper folder.
+    fn ensure_thumbs(&self) {
+        let mut batch = Vec::new();
+        {
+            let mut scene = self.scene.borrow_mut();
+            let n = scene.active_len();
+            if n == 0 {
+                return;
+            }
+            let center = scene.target as isize;
+
+            // How many cards each side of the selection can be on screen,
+            // derived from the canvas width, plus a margin to keep scrolling
+            // smooth on wide monitors.
+            let width = {
+                let width = self.canvas.width();
+                if width > 0 {
+                    f64::from(width)
+                } else {
+                    THUMB_FALLBACK_WIDTH
+                }
+            };
+            let visible = (width / 2.0 + CARD_WIDTH * SELECTED_SCALE) / CARD_WIDTH + 1.0;
+            let window = (visible.ceil() as isize + THUMB_MARGIN).min(n as isize);
+            let keep = (window + THUMB_KEEP_MARGIN).min(n as isize);
+
+            // Evict every decode that has drifted outside the keep band.
+            for slot in 0..n {
+                if (slot as isize - center).abs() <= keep {
+                    continue;
+                }
+                let image = scene.active_image(slot);
+                if scene.thumbs[image].is_some() {
+                    scene.thumbs[image] = None;
+                    scene.thumb_requested[image] = false;
+                }
+            }
+
+            // Request the ones just inside the window.
+            for offset in -window..=window {
+                let slot = (center + offset).rem_euclid(n as isize) as usize;
+                let image = scene.active_image(slot);
+                if scene.thumbs[image].is_none() && !scene.thumb_requested[image] {
+                    scene.thumb_requested[image] = true;
+                    batch.push((image, scene.paths[image].clone()));
+                }
+            }
+
+            if !batch.is_empty() {
+                scene.pending += batch.len();
+            }
+        }
+        if !batch.is_empty() {
+            spawn_loader_batch(batch, self.sender.clone());
+        }
+    }
+
+    /// Drop every decoded thumbnail, e.g. once the overlay has closed, so the
+    /// carousel holds no image memory while it is not on screen.
+    fn release_thumbs(&self) {
+        {
+            let mut scene = self.scene.borrow_mut();
+            for slot in scene.thumbs.iter_mut() {
+                *slot = None;
+            }
+            for requested in scene.thumb_requested.iter_mut() {
+                *requested = false;
+            }
+            scene.pending = 0;
+        }
+        // glibc keeps freed chunks in its arenas; hand the pages back so a
+        // browsing session doesn't leave the shell's RSS high afterwards.
+        trim_heap();
     }
 
     /// Advance every animation one frame. The tick re-arms itself until
@@ -991,31 +1101,36 @@ impl CarouselModel {
         }
         if hide_now {
             self.window.set_visible(false);
+            // The overlay is gone: hand the decoded images back so the shell
+            // keeps no wallpaper memory while the carousel is closed.
+            self.release_thumbs();
         }
         if busy {
             self.canvas.queue_draw();
         }
         self.refresh_status();
         if !busy {
-            self.ticking.set(false);
+            // Nothing left to animate: stop the timer here (rather than from
+            // inside the callback) so exactly one timer ever exists.
+            if let Some(tick) = self.tick.take() {
+                tick.remove();
+            }
         }
     }
 
     /// Keep a 16 ms tick running while anything animates.
     fn ensure_tick(&mut self) {
-        if self.ticking.get() {
+        if self.tick.is_some() {
             return;
         }
-        self.ticking.set(true);
         let sender = self.sender.clone();
-        let ticking = self.ticking.clone();
-        glib::timeout_add_local(Duration::from_millis(FRAME_MS), move || {
-            if !ticking.get() {
-                return glib::ControlFlow::Break;
-            }
-            sender.input(CarouselInput::Tick);
-            glib::ControlFlow::Continue
-        });
+        self.tick = Some(glib::timeout_add_local(
+            Duration::from_millis(FRAME_MS),
+            move || {
+                sender.input(CarouselInput::Tick);
+                glib::ControlFlow::Continue
+            },
+        ));
     }
 
     /// Sync the status line (and the empty-state card) with the scene.
@@ -1026,8 +1141,8 @@ impl CarouselModel {
         let text = if empty_folder {
             // The empty-state card takes over.
             String::new()
-        } else if scene.loading {
-            format!("Loading previews… {}/{}", scene.loaded, scene.paths.len())
+        } else if scene.pending > 0 {
+            "Loading previews…".to_string()
         } else if !scene.query.is_empty() {
             let count = scene.matches.len();
             if count == 0 {
@@ -1060,6 +1175,20 @@ impl CarouselModel {
 /// The file name of `path` as UTF-8, or an empty string.
 fn file_name(path: &Path) -> &str {
     path.file_name().and_then(|name| name.to_str()).unwrap_or_default()
+}
+
+/// Ask the allocator to return free heap pages to the kernel.
+///
+/// `malloc_trim` is glibc-specific; elsewhere there is simply nothing to do.
+/// It is a no-op unless enough memory has been freed to matter, and best
+/// called after a large release (closing the carousel).
+pub(crate) fn trim_heap() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: `malloc_trim` takes no pointers and only touches the allocator's
+    // own bookkeeping; it is safe to call from any thread.
+    unsafe {
+        libc::malloc_trim(0);
+    }
 }
 
 // --- Painting -------------------------------------------------------------
@@ -1301,15 +1430,16 @@ fn card_crop(width: i32, height: i32) -> (i32, i32) {
     }
 }
 
-/// Decode every wallpaper on a background thread, streaming cards back.
+/// Decode one batch of wallpapers on a background thread, streaming cards
+/// back. Each entry carries the image index the card belongs to.
 ///
 /// The thread exits when the component goes away: `send` fails once the
 /// receiver is dropped, which is checked after each image.
-fn spawn_loader(paths: Vec<PathBuf>, sender: ComponentSender<CarouselModel>) {
+fn spawn_loader_batch(batch: Vec<(usize, PathBuf)>, sender: ComponentSender<CarouselModel>) {
     let input = sender.input_sender().clone();
     std::thread::spawn(move || {
-        for (index, path) in paths.iter().enumerate() {
-            let Some(card) = decode_card(path) else {
+        for (index, path) in batch {
+            let Some(card) = decode_card(&path) else {
                 continue;
             };
             let message = CarouselInput::Thumb {
