@@ -12,6 +12,8 @@
 @define-color layer1            rgba(60, 56, 54, 0.72);   /* bg1 */
 @define-color layer2            rgba(80, 73, 69, 0.96);   /* bg2 */
 @define-color layer0_border     rgba(102, 92, 84, 0.6);   /* bg3 */
+@define-color layer1_border     rgba(102, 92, 84, 0.55);  /* bg3 */
+@define-color divider           rgba(168, 153, 132, 0.35); /* fg4 */
 
 /* Content. */
 @define-color on_surface          #fbf1c7;  /* fg0 */

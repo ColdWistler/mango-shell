@@ -8,6 +8,8 @@
 @define-color layer1            rgba(255, 255, 255, 0.08);
 @define-color layer2            rgba(24, 24, 24, 0.98);
 @define-color layer0_border     rgba(229, 57, 53, 0.35);
+@define-color layer1_border     rgba(229, 57, 53, 0.30);
+@define-color divider           rgba(255, 255, 255, 0.16);
 
 @define-color on_surface          #ffffff;
 @define-color on_surface_variant  #8f8f8f;

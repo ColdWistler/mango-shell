@@ -148,6 +148,9 @@ Material 3 roles onto these tokens:
 /* ~/.config/mango-shell/style.css */
 @define-color layer0            rgba(20, 19, 19, 0.86);
 @define-color layer1            rgba(38, 37, 38, 0.72);
+@define-color layer0_border     alpha(#47464f, 0.55);  /* bar / popover outline */
+@define-color layer1_border     alpha(#47464f, 0.50);  /* widget-cluster outline */
+@define-color divider           alpha(#918f9a, 0.35);  /* hairlines between widgets */
 @define-color primary           #d0bcff;
 @define-color on_primary        #381e72;
 @define-color secondary_container #4a4458;
@@ -159,6 +162,17 @@ Restart the shell (`SUPER+SHIFT,b` with the keybind below, or
 `cargo install --path .` then re-exec) to pick it up.
 
 > The full token list is at the top of `src/style.css`.
+
+#### Borders & separation
+
+Each widget cluster sits in its own outlined pill (`@layer1_border`), and the
+indicators that share a cluster — Wi-Fi | volume | brightness | resources |
+power — are split by a hairline (`@divider`, drawn by `.mango-divider` in
+`bar.rs`). The bar surface and popovers use `@layer0_border`. All three come
+from the same wallpaper palette, so re-running matugen re-themes the borders
+along with everything else; the matugen template in
+`~/.config/mango-shell/templates/colors.css` derives `@layer1_border` and
+`@divider` from `outline_variant` and `outline`.
 
 ### Frosted-glass blur
 
@@ -218,6 +232,10 @@ sudo pacman -S --needed cava            # optional; audio visualizer, see below
 # The power menu can lock the session. Mango implements the wlr session-lock
 # protocol but ships no locker, so install one for the "Lock" action to work:
 sudo pacman -S --needed swaylock        # optional; also: gtklock, hyprlock, …
+
+# The resources widget (CPU / memory / GPU / storage) needs no daemon: it reads
+# /proc, /sys and `df`, and shows a GPU when `nvidia-smi` (NVIDIA driver) or the
+# amdgpu sysfs counters are available.
 ```
 
 Check your toolchain:
@@ -346,6 +364,7 @@ background thread so a slow tool never freezes the bar:
 | **Volume** | PipeWire / PulseAudio (`pactl`) | click opens a popover: slider, mute and output-device picker; scroll ±5 % |
 | **Brightness** | `/sys/class/backlight` | click opens a popover with a slider; scroll ±5 % (see below) |
 | **Battery / power** | `/sys/class/power_supply` | shows the charge (and a matching icon); click opens the battery status plus a session menu: lock, log out, suspend, reboot, shut down |
+| **Resources** | `/proc`, `/sys`, `df`, `nvidia-smi` | shows CPU/RAM/GPU; click opens a popover with two-minute sparklines plus a storage list (see below) |
 | **Visualizer** | [`cava`](https://github.com/karlstav/cava) (audio spectrum) | live spectrum bars next to the indicators; optional, hides itself when `cava` is absent |
 | **Tray** | `org.kde.StatusNotifierItem` over D-Bus | left = activate, middle = secondary, right = menu |
 
@@ -375,6 +394,25 @@ the actions. **Lock needs a session locker**: Mango implements the wlr
 session-lock protocol but ships none, so install one (`sudo pacman -S swaylock`,
 `gtklock`, `hyprlock`, …). Without one, `Lock` falls back to
 `loginctl lock-session`, which only takes effect once a locker is listening.
+
+Clicking **Resources** shows a small system monitor. The bar carries three
+compact readouts — `CPU`, `RAM` and `GPU` — and the popover expands each into a
+full block: CPU usage with core count, average frequency and the 1-minute load;
+memory used/total plus swap; and GPU utilisation, VRAM and temperature. Below
+those, the **Storage** section lists the busiest mounted filesystems, each with
+a rounded usage bar. Every metric (and each disk) keeps the last two minutes of
+samples, drawn as a live sparkline with cairo in the widget's CSS colour.
+
+Nothing extra is installed: CPU, memory and load come from `/proc`, frequency
+from `/sys/devices/system/cpu`, and storage from `df` (de-duplicated by device,
+so bind mounts and btrfs subvolumes do not repeat). The GPU is sampled from a
+single long-lived `nvidia-smi` process on NVIDIA systems, or from the `amdgpu`
+sysfs counters on AMD ones — and the GPU rows hide themselves when neither is
+found, so the widget still works on a machine with no GPU. Everything runs on
+one background thread (the CPU percentage needs the delta between two
+readings), so the bar never blocks. To change the cadence or the graph window,
+edit the `POLL_MS` and `HISTORY` constants in `src/widgets/resources.rs`; to
+recolour it, restyle `.mango-resource-graph` in your user stylesheet.
 
 The **audio visualizer** is a small pill of live spectrum bars beside the
 status cluster. It spawns [`cava`](https://github.com/karlstav/cava) with a
@@ -466,6 +504,9 @@ src/
     brightness.rs   BrightnessModel: sysfs backlight, slider + scroll.
     power.rs        PowerModel: sysfs battery + a session menu (lock, log out,
                     suspend, reboot, shut down).
+    resources.rs    ResourcesModel: /proc + /sys + `df` CPU/RAM/GPU/storage
+                    readouts and a popover of cairo sparklines + usage bars;
+                    hides the GPU rows when no NVIDIA/AMD GPU is found.
     tray.rs         TrayModel: StatusNotifierItem host + DBusMenu popover.
     visualizer.rs   VisualizerModel: cava-backed spectrum bars in a cairo
                     DrawingArea; hides itself (and retries) when cava is absent.
@@ -547,8 +588,8 @@ Notable differences, and why:
   `forest`, `panels` and `pwidgets`; `panels` and `pwidgets` need extra
   widget types before they map cleanly onto a single top bar).
 - **More modules.** Media player (MPRIS), notifications, keyboard layout.
-  (Battery + the power/session menu, Wi-Fi, volume, brightness and the system
-  tray are already in `widgets/`.)
+  (Battery + the power/session menu, Wi-Fi, volume, brightness, the resources
+  monitor and the system tray are already in `widgets/`.)
 - **Launcher polish.** The launcher matches by substring; a fuzzy scorer,
   MRU/recency ordering, and launching `.desktop` actions would make it feel
   closer to rofi/fuzzel.

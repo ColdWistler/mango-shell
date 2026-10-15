@@ -12,6 +12,8 @@
 @define-color layer1            rgba(41, 46, 66, 0.72);   /* bg_highlight */
 @define-color layer2            rgba(54, 59, 86, 0.96);
 @define-color layer0_border     rgba(59, 66, 97, 0.55);   /* fg_gutter */
+@define-color layer1_border     rgba(59, 66, 97, 0.55);   /* fg_gutter */
+@define-color divider           rgba(86, 95, 137, 0.40);   /* comment */
 
 /* Content. */
 @define-color on_surface          #c0caf5;  /* fg */

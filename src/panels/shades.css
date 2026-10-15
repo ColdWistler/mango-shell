@@ -8,6 +8,8 @@
 @define-color layer1            rgba(30, 136, 229, 0.14);
 @define-color layer2            rgba(20, 20, 20, 0.98);
 @define-color layer0_border     rgba(100, 181, 246, 0.22);
+@define-color layer1_border     rgba(100, 181, 246, 0.25);
+@define-color divider           rgba(176, 190, 197, 0.30);
 
 @define-color on_surface          #ffffff;
 @define-color on_surface_variant  #b0bec5;
@@ -44,6 +46,7 @@ window.mango-bar.panel-shades .mango-bar-surface {
 
 window.mango-bar.panel-shades .mango-group {
     background: transparent;
+    border: none;
     border-radius: 0;
     padding: 0 4px;
 }

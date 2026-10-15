@@ -9,6 +9,8 @@
 @define-color layer1            rgba(255, 255, 255, 0.05);
 @define-color layer2            rgba(20, 20, 20, 0.98);
 @define-color layer0_border     rgba(253, 216, 53, 0.28);
+@define-color layer1_border     rgba(253, 216, 53, 0.30);
+@define-color divider           rgba(189, 189, 189, 0.30);
 
 @define-color on_surface          #f5f5f5;
 @define-color on_surface_variant  #bdbdbd;

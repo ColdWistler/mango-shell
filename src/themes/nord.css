@@ -14,6 +14,8 @@
 @define-color layer1            rgba(59, 66, 82, 0.72);
 @define-color layer2            rgba(67, 76, 94, 0.96);
 @define-color layer0_border     rgba(76, 86, 106, 0.65);
+@define-color layer1_border     rgba(76, 86, 106, 0.60);
+@define-color divider           rgba(123, 136, 161, 0.38);
 
 /* Content. */
 @define-color on_surface          #eceff4;

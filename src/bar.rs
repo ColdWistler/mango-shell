@@ -24,6 +24,7 @@ use crate::panel::{Panel, Sep, Slot};
 use crate::widgets::brightness::BrightnessModel;
 use crate::widgets::clock::ClockModel;
 use crate::widgets::power::PowerModel;
+use crate::widgets::resources::ResourcesModel;
 use crate::widgets::tags::{TagsInput, TagsModel, TagsOutput};
 use crate::widgets::theme::{ThemeButtonInput, ThemeButtonModel, ThemeButtonOutput};
 use crate::widgets::tray::TrayModel;
@@ -86,6 +87,8 @@ pub struct BarModel {
     volume: Controller<VolumeModel>,
     #[allow(dead_code)]
     brightness: Controller<BrightnessModel>,
+    #[allow(dead_code)]
+    resources: Controller<ResourcesModel>,
     #[allow(dead_code)]
     power: Controller<PowerModel>,
     #[allow(dead_code)]
@@ -184,6 +187,9 @@ impl SimpleComponent for BarModel {
         let wifi = WifiModel::builder().launch(()).detach();
         let volume = VolumeModel::builder().launch(()).detach();
         let brightness = BrightnessModel::builder().launch(()).detach();
+        // CPU / memory / GPU readouts with a sparkline popover. Reads sysfs and
+        // `nvidia-smi` directly, so it needs no daemon.
+        let resources = ResourcesModel::builder().launch(()).detach();
         // Battery + the session menu (lock / log out / suspend / reboot /
         // shut down); always visible, so a desktop without a battery still
         // gets the power menu.
@@ -224,13 +230,19 @@ impl SimpleComponent for BarModel {
         // empty), so it is appended as-is.
         let tray_widget = tray.widget().clone().upcast::<gtk::Widget>();
 
-        // Wi-Fi, volume and brightness in one pill.
+        // The system indicators share one pill, each separated from the next by
+        // a hairline divider so the group reads as distinct widgets rather than
+        // one blob.
         let system_cluster =
             horizontal_cluster(&["mango-group", "mango-system"], 0, gtk::Align::Center);
-        system_cluster.append(wifi.widget());
-        system_cluster.append(volume.widget());
-        system_cluster.append(brightness.widget());
-        system_cluster.append(power.widget());
+        let indicators: [&gtk::Widget; 5] = [
+            wifi.widget().upcast_ref::<gtk::Widget>(),
+            volume.widget().upcast_ref::<gtk::Widget>(),
+            brightness.widget().upcast_ref::<gtk::Widget>(),
+            resources.widget().upcast_ref::<gtk::Widget>(),
+            power.widget().upcast_ref::<gtk::Widget>(),
+        ];
+        append_with_dividers(&system_cluster, &indicators);
 
         // The audio visualizer is its own pill (its root already carries
         // `mango-group`), so it is appended as-is and placed in the same slot
@@ -276,6 +288,7 @@ impl SimpleComponent for BarModel {
             wifi,
             volume,
             brightness,
+            resources,
             power,
             visualizer,
             theme_button,
@@ -320,6 +333,26 @@ fn horizontal_cluster(classes: &[&str], spacing: i32, halign: gtk::Align) -> gtk
     cluster.set_halign(halign);
     cluster.set_valign(gtk::Align::Center);
     cluster
+}
+
+/// Append `widgets` to `cluster`, interleaving a hairline `.mango-divider`
+/// before every widget after the first. Each divider tracks its neighbour's
+/// visibility, so a widget that hides itself (no backlight, say) takes its
+/// leading divider with it instead of leaving a dangling line.
+fn append_with_dividers(cluster: &gtk::Box, widgets: &[&gtk::Widget]) {
+    for (index, widget) in widgets.iter().enumerate() {
+        if index > 0 {
+            let divider = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            divider.add_css_class("mango-divider");
+            divider.set_valign(gtk::Align::Center);
+            (*widget)
+                .bind_property("visible", &divider, "visible")
+                .flags(gtk::glib::BindingFlags::SYNC_CREATE)
+                .build();
+            cluster.append(&divider);
+        }
+        cluster.append(*widget);
+    }
 }
 
 /// Chain `members` into one slot box with 6px spacing and `panel.sep`
