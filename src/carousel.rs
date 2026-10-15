@@ -103,14 +103,14 @@ const DECODE_BOX: (i32, i32) = (600, 840);
 /// Pointer parallax: as the pointer crosses the overlay the centre card's
 /// image drifts up to this many pixels towards it. Outer cards drift less, so
 /// the picture reads as sunk behind its frame.
-const PARALLAX_POINTER: f64 = 60.0;
+const PARALLAX_POINTER: f64 = 120.0;
 
 /// Motion parallax: while the carousel glides, each image lags its frame by
 /// this fraction of the per-frame travel, so a slide has a little depth.
-const PARALLAX_SCROLL: f64 = 0.6;
+const PARALLAX_SCROLL: f64 = 0.9;
 
 /// How much the image is over-scaled so a drifting one still covers the frame.
-const PARALLAX_OVERSCAN: f64 = 1.25;
+const PARALLAX_OVERSCAN: f64 = 1.5;
 
 /// Depth weight for the drift: the centre card (`falloff` = 1) drifts fully,
 /// distant cards about a third as much.
