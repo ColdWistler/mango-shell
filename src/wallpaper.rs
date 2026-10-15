@@ -301,6 +301,14 @@ impl SimpleComponent for WallpaperModel {
             WallpaperInput::SetPath(path) => apply(self, path.as_deref(), true),
         }
     }
+
+    /// Cancel a half-finished transition so its timeout is not left dangling
+    /// when the surface (and its monitor) goes away.
+    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
+        if let Some(pending) = self.pending.take() {
+            pending.remove();
+        }
+    }
 }
 
 /// Point the surface at `path`, or hide it when there is nothing to show.

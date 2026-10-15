@@ -494,8 +494,10 @@ fn spawn_tray(sender: ComponentSender<TrayModel>) -> UnboundedSender<TrayCommand
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<TrayCommand>();
 
     std::thread::spawn(move || {
+        // The tray's work is light DBus messaging; one worker thread is plenty
+        // and keeps the shell's thread count down.
         let Ok(runtime) = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
+            .worker_threads(1)
             .enable_all()
             .build()
         else {
