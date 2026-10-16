@@ -5,6 +5,7 @@
 
 pub mod brightness;
 pub mod clock;
+pub mod music;
 pub mod power;
 pub mod resources;
 pub mod tags;

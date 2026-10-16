@@ -41,10 +41,10 @@ window.mango-bar.panel-docky .mango-bar-surface {
     min-height: 40px;
     border: none;
     border-bottom: 2px solid @primary;
-    border-radius: 18px;
+    border-radius: 0;
 }
 
 window.mango-bar.panel-docky .mango-group {
     background-color: @layer1;
-    border-radius: 9999px;
+    border-radius: 0;
 }

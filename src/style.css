@@ -67,8 +67,8 @@ window.mango-bar {
     border: 1px solid @layer0_border;
     border-top: none;
     border-radius: 0;
-    border-bottom-left-radius: 23px;
-    border-bottom-right-radius: 23px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
     padding: 0 8px;
 }
 
@@ -77,7 +77,7 @@ window.mango-bar {
 .mango-group {
     background-color: @layer1;
     border: 1px solid @layer1_border;
-    border-radius: 9999px;
+    border-radius: 0;
     padding: 0 5px;
     min-height: 32px;
 }
@@ -100,7 +100,7 @@ window.mango-bar button.mango-tag {
     min-height: 26px;
     padding: 0;
     margin: 3px 1px;
-    border-radius: 9999px;
+    border-radius: 0;
     font-size: 15px;
     font-weight: 500;
 }
@@ -132,7 +132,7 @@ window.mango-bar button.mango-icon-button {
     min-width: 32px;
     min-height: 32px;
     padding: 0;
-    border-radius: 9999px;
+    border-radius: 0;
     background-color: @layer1;
     border: 1px solid @layer1_border;
     -gtk-icon-size: 17px;
@@ -155,7 +155,7 @@ window.mango-bar button.mango-icon-button:active {
     min-width: 1px;
     min-height: 18px;
     margin: 0 6px;
-    border-radius: 1px;
+    border-radius: 0;
 }
 
 .mango-sep-block {
@@ -163,7 +163,7 @@ window.mango-bar button.mango-icon-button:active {
     min-width: 6px;
     min-height: 18px;
     margin: 0 5px;
-    border-radius: 2px;
+    border-radius: 0;
 }
 
 .mango-sep-glyph {
@@ -171,17 +171,6 @@ window.mango-bar button.mango-icon-button:active {
     padding: 0 3px;
     font-size: 15px;
 }
-
-/* Drawn between widgets *inside* one cluster (e.g. Wi-Fi | volume | brightness
- * | resources | power). Inserted by `bar.rs`, which ties each divider's
- * visibility to the widget that follows it so a hidden indicator (a missing
- * backlight, say) does not leave a dangling line. */
-.mango-divider {
-    background-color: @divider;
-    min-width: 1px;
-    min-height: 14px;
-    margin: 0 5px;
-    border-radius: 1px;
 }
 
 /* --- Clock ------------------------------------------------------------ */
@@ -218,7 +207,7 @@ window.mango-bar button.mango-clock-button {
 
 window.mango-bar button.mango-clock-button:hover {
     background-color: alpha(@on_surface, 0.08);
-    border-radius: 9999px;
+    border-radius: 0;
 }
 
 /* `GtkCalendar` is the stock widget; these rules only make it legible on the
@@ -242,7 +231,7 @@ window.mango-bar button.mango-clock-button:hover {
     border: none;
     box-shadow: none;
     color: @on_surface_variant;
-    border-radius: 8px;
+    border-radius: 0;
     min-height: 26px;
     min-width: 26px;
     padding: 0 6px;
@@ -277,7 +266,7 @@ window.mango-bar button.mango-clock-button:hover {
 .mango-calendar label:selected {
     background-color: @primary;
     color: @on_primary;
-    border-radius: 9999px;
+    border-radius: 0;
 }
 
 /* --- Right-hand status cluster --------------------------------------- */
@@ -297,15 +286,15 @@ window.mango-bar button.mango-clock-button:hover {
 
 .mango-system,
 .mango-tray {
-    padding: 0 3px;
+    padding: 0 2px;
 }
 
 /* Icon + value pill shared by the system indicators. */
 window.mango-bar .mango-widget {
-    min-height: 28px;
-    padding: 0 8px;
-    margin: 2px 1px;
-    border-radius: 9999px;
+    min-height: 24px;
+    padding: 0 6px;
+    margin: 0 1px;
+    border-radius: 0;
     color: @on_surface_variant;
     -gtk-icon-size: 16px;
 }
@@ -346,11 +335,11 @@ window.mango-bar .mango-visualizer {
 /* --- System tray ------------------------------------------------------ */
 
 window.mango-bar button.mango-tray-item {
-    min-width: 26px;
-    min-height: 26px;
+    min-width: 24px;
+    min-height: 24px;
     padding: 0;
-    margin: 2px 1px;
-    border-radius: 9999px;
+    margin: 0 1px;
+    border-radius: 0;
     color: @on_surface;
     -gtk-icon-size: 16px;
 }
@@ -370,7 +359,7 @@ window.mango-bar button.mango-tray-item.attention {
 popover.mango-menu-popover > contents {
     background-color: @layer2;
     border: 1px solid @layer0_border;
-    border-radius: 14px;
+    border-radius: 0;
     padding: 6px;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
@@ -384,7 +373,7 @@ button.mango-menu-item {
     background-color: transparent;
     border: none;
     box-shadow: none;
-    border-radius: 8px;
+    border-radius: 0;
     padding: 5px 8px;
     min-height: 0;
     color: @on_surface;
@@ -440,14 +429,14 @@ window.mango-flyout > revealer {
 .mango-flyout-panel {
     background-color: alpha(@layer2, 0.97);
     border: 1px solid alpha(@primary, 0.45);
-    border-radius: 22px;
+    border-radius: 0;
     padding: 14px;
 }
 
 /* The current wallpaper snapshot pinned to the top of every flyout (a HyDE
  * staple, straight from its `wall.thmb` launcher headers). */
 .mango-flyout-banner {
-    border-radius: 15px;
+    border-radius: 0;
     background-color: alpha(@on_surface, 0.06);
 }
 
@@ -457,7 +446,7 @@ window.mango-flyout entry {
     background-color: alpha(@on_surface, 0.06);
     color: @on_surface;
     border: 1px solid @outline_variant;
-    border-radius: 9999px;
+    border-radius: 0;
     padding: 10px 16px;
     min-height: 24px;
     caret-color: @primary;
@@ -484,7 +473,7 @@ window.mango-flyout scrollbar {
 
 window.mango-flyout scrollbar slider {
     background-color: alpha(@on_surface, 0.22);
-    border-radius: 9999px;
+    border-radius: 0;
     min-width: 6px;
     min-height: 6px;
     margin: 2px;
@@ -503,7 +492,7 @@ window.mango-flyout list {
 window.mango-flyout row {
     padding: 8px 12px;
     margin: 1px 0;
-    border-radius: 14px;
+    border-radius: 0;
     color: @on_surface;
     transition: background-color 120ms ease;
 }
@@ -545,7 +534,7 @@ window.mango-carousel entry.mango-carousel-search {
     background-color: alpha(black, 0.73);
     color: white;
     border: 1px solid alpha(white, 0.27);
-    border-radius: 10px;
+    border-radius: 0;
     padding: 9px 14px;
     min-height: 22px;
     caret-color: white;
@@ -607,7 +596,7 @@ flowbox.mango-theme-grid {
 
 flowboxchild.mango-theme-card {
     padding: 10px;
-    border-radius: 16px;
+    border-radius: 0;
     background-color: alpha(@on_surface, 0.04);
     transition: background-color 120ms ease;
 }
@@ -665,7 +654,7 @@ flowbox.mango-panel-grid {
 
 flowboxchild.mango-panel-card {
     padding: 12px;
-    border-radius: 16px;
+    border-radius: 0;
     background-color: alpha(@on_surface, 0.04);
     transition: background-color 120ms ease;
 }
@@ -726,7 +715,7 @@ window.mango-bar button.mango-theme-button {
 popover.mango-theme-popover > contents {
     background-color: @layer2;
     border: 1px solid @layer0_border;
-    border-radius: 14px;
+    border-radius: 0;
     padding: 5px;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
@@ -742,7 +731,7 @@ button.mango-theme-item {
     background-color: transparent;
     border: none;
     box-shadow: none;
-    border-radius: 10px;
+    border-radius: 0;
     padding: 5px 8px;
     min-height: 0;
     color: @on_surface;
@@ -772,7 +761,7 @@ button.mango-theme-item:hover {
 popover.mango-applet-popover > contents {
     background-color: @layer2;
     border: 1px solid @layer0_border;
-    border-radius: 16px;
+    border-radius: 0;
     padding: 8px;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
@@ -812,7 +801,7 @@ button.mango-applet-icon-button {
     min-width: 32px;
     min-height: 32px;
     padding: 0;
-    border-radius: 9999px;
+    border-radius: 0;
     background-color: alpha(@on_surface, 0.06);
     color: @on_surface;
     -gtk-icon-size: 16px;
@@ -828,7 +817,7 @@ button.mango-applet-button {
     background-color: alpha(@on_surface, 0.08);
     border: none;
     box-shadow: none;
-    border-radius: 9999px;
+    border-radius: 0;
     padding: 6px 14px;
     min-height: 0;
     color: @on_surface;
@@ -855,7 +844,7 @@ button.mango-applet-item {
     background-color: transparent;
     border: none;
     box-shadow: none;
-    border-radius: 10px;
+    border-radius: 0;
     padding: 6px 8px;
     min-height: 0;
     color: @on_surface;
@@ -887,7 +876,7 @@ button.mango-applet-item:hover {
     background-color: alpha(@on_surface, 0.06);
     color: @on_surface;
     border: 1px solid @outline_variant;
-    border-radius: 10px;
+    border-radius: 0;
     padding: 6px 10px;
     min-height: 22px;
     caret-color: @primary;
@@ -902,7 +891,7 @@ button.mango-applet-item:hover {
 /* The radio switch in the Wi-Fi header. */
 switch.mango-switch {
     background-color: alpha(@on_surface, 0.16);
-    border-radius: 9999px;
+    border-radius: 0;
 }
 
 switch.mango-switch:checked {
@@ -912,7 +901,7 @@ switch.mango-switch:checked {
 switch.mango-switch > slider {
     background-color: @on_surface;
     border: none;
-    border-radius: 9999px;
+    border-radius: 0;
     min-width: 18px;
     min-height: 18px;
     margin: 2px;
@@ -922,20 +911,20 @@ switch.mango-switch > slider {
 scale.mango-slider trough {
     background-color: alpha(@on_surface, 0.14);
     border: none;
-    border-radius: 9999px;
+    border-radius: 0;
     min-height: 6px;
 }
 
 scale.mango-slider highlight {
     background-color: @primary;
-    border-radius: 9999px;
+    border-radius: 0;
     min-height: 6px;
 }
 
 scale.mango-slider slider {
     background-color: @on_surface;
     border: none;
-    border-radius: 9999px;
+    border-radius: 0;
     min-width: 14px;
     min-height: 14px;
     margin: -4px 0;
@@ -948,7 +937,7 @@ scale.mango-slider slider {
 
 .mango-applet scrollbar slider {
     background-color: alpha(@on_surface, 0.22);
-    border-radius: 9999px;
+    border-radius: 0;
     min-width: 6px;
     min-height: 6px;
     margin: 2px;
@@ -982,7 +971,7 @@ button.mango-power-action {
     background-color: alpha(@on_surface, 0.06);
     border: none;
     box-shadow: none;
-    border-radius: 14px;
+    border-radius: 0;
     padding: 10px 4px;
     min-height: 0;
     color: @on_surface;
@@ -1020,15 +1009,16 @@ button.mango-power-action.danger:hover {
 
 /* --- System resources (CPU / memory / GPU / storage) ------------------- */
 
-/* Three compact readouts in one bar pill: a dim tag above a coloured value.
- * The value tones stay inside the Material 3 roles every panel and theme
- * redefines, so no palette leaves them undefined. */
-.mango-resource-tag {
-    color: @outline;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.4px;
+/* The bar gauges: `resources.rs` paints a box that fills bottom-up to the
+ * current percentage behind a symbolic glyph, and reads the colour from here.
+ * The tones stay inside the Material 3 roles every panel and theme defines. */
+.mango-resource-fill {
+    color: @primary;
 }
+
+.mango-resource-fill.cpu { color: @primary; }
+.mango-resource-fill.mem { color: @on_primary_container; }
+.mango-resource-fill.gpu { color: @on_secondary_container; }
 
 .mango-resource-value {
     font-size: 13px;
@@ -1110,4 +1100,89 @@ button.mango-power-action.danger:hover {
 
 .mango-resource-usage.high {
     color: @error;
+}
+
+/* --- Now playing (MPRIS) ----------------------------------------------- */
+
+/* The pill is the widget's own root (`.mango-group`), so it hides as a whole
+ * while nothing is playing; this only tunes the inner padding for the cover. */
+.mango-music {
+    padding: 0 8px 0 6px;
+}
+
+/* The widget is a menu button; strip the button chrome, like the clock. */
+window.mango-bar button.mango-music-button {
+    padding: 0;
+    min-height: 0;
+    min-width: 0;
+}
+
+window.mango-bar button.mango-music-button:hover {
+    background-color: alpha(@on_surface, 0.08);
+    border-radius: 0;
+}
+
+/* Cover art: a rounded tile behind the drawing area / fallback icon. The
+ * artwork itself is rounded by cairo (bar vs popover radii differ), so the
+ * tile only shows while a track has no art. */
+.mango-music-cover {
+    background-color: alpha(@on_surface, 0.08);
+    border-radius: 0;
+}
+
+.mango-music-fallback {
+    color: @on_surface_variant;
+}
+
+.mango-music-label {
+    color: @on_surface;
+    font-size: 14px;
+}
+
+/* The popover card: a little wider so the title and controls breathe. */
+.mango-music-menu {
+    min-width: 300px;
+}
+
+.mango-music-title {
+    color: @on_surface;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.mango-music-artist {
+    color: @on_surface_variant;
+    font-size: 14px;
+}
+
+.mango-music-album {
+    color: @outline;
+    font-size: 12px;
+}
+
+.mango-music-player {
+    color: @primary;
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+/* The round play/pause button stands out from the bare skip buttons. */
+window.mango-bar button.mango-music-play {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 0;
+    background-color: @primary;
+    color: @on_primary;
+    -gtk-icon-size: 20px;
+}
+
+window.mango-bar button.mango-music-play:hover {
+    background-color: alpha(@primary, 0.85);
+}
+
+.mango-music-time {
+    color: @on_surface_variant;
+    font-size: 12px;
 }

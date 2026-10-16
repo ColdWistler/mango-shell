@@ -23,6 +23,15 @@ mango-ipc = { version = "0.6", default-features = false, features = ["blocking"]
 signal-hook = "0.3"
 # Hosts the system tray (StatusNotifierItem) and its DBusMenu on the session bus.
 system-tray = "0.8"
+# Session-bus client for the "now playing" widget, which speaks MPRIS
+# (org.mpris.MediaPlayer2.*) — the standard interface every Linux music player
+# exposes, from Spotify and Sonora to VLC, mpv and browsers.
+#
+# `system-tray` already pulls zbus in with its Tokio backend, so this reuses the
+# exact same build: no new crates are downloaded, and the blocking API is the
+# only feature we turn on. `default-features = false` keeps zbus off its own
+# `async-io` backend, matching what is already compiled.
+zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
 # Async runtime the tray host runs on (system-tray is Tokio-based).
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 # Used only to hand freed memory back to the OS (`malloc_trim`) after the

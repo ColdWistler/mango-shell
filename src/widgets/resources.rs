@@ -54,6 +54,8 @@ const GPU_RETRY_TICKS: u32 = 15;
 const GRAPH_H: i32 = 40;
 /// Width of a storage usage bar, in pixels.
 const USAGE_W: i32 = 56;
+/// Side of a bar gauge, in pixels.
+const GAUGE: i32 = 16;
 /// Usage at or above this fraction is painted in the warning colour.
 const HIGH: f64 = 0.90;
 /// Filesystems to keep out of the Storage list even if `df` reports them.
@@ -153,6 +155,17 @@ pub struct ResourcesModel {
     storage_box: gtk::Box,
     /// The rows currently rendered, so unchanged polls skip the rebuild.
     rendered_disks: Vec<DiskUsage>,
+    /// The bar gauges: a symbolic glyph over a box that fills bottom-up to the
+    /// percentage. The overlays themselves live in the row built in `init`;
+    /// the model owns the drawing areas (to repaint them), their shared
+    /// fractions, and a handle to the GPU gauge so it can hide on a desktop.
+    gpu_overlay: gtk::Overlay,
+    cpu_fill: gtk::DrawingArea,
+    mem_fill: gtk::DrawingArea,
+    gpu_fill: gtk::DrawingArea,
+    cpu_frac: Rc<RefCell<f64>>,
+    mem_frac: Rc<RefCell<f64>>,
+    gpu_frac: Rc<RefCell<f64>>,
 }
 
 #[derive(Debug)]
@@ -177,55 +190,9 @@ impl SimpleComponent for ResourcesModel {
             set_tooltip_text: Some(&model.tooltip()),
 
             #[wrap(Some)]
-            set_child = &gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
-
-                append = &gtk::Image {
-                    set_css_classes: &["mango-widget-icon"],
-                    set_icon_name: Some("computer-symbolic"),
-                },
-
-                append = &gtk::Box {
-                    set_spacing: 3,
-                    append = &gtk::Label {
-                        set_css_classes: &["mango-resource-tag"],
-                        set_label: "CPU",
-                    },
-                    append = &gtk::Label {
-                        set_css_classes: &["mango-resource-value", "cpu"],
-                        #[watch]
-                        set_label: &model.percent(model.sample.cpu),
-                    },
-                },
-
-                append = &gtk::Box {
-                    set_spacing: 3,
-                    append = &gtk::Label {
-                        set_css_classes: &["mango-resource-tag"],
-                        set_label: "RAM",
-                    },
-                    append = &gtk::Label {
-                        set_css_classes: &["mango-resource-value", "mem"],
-                        #[watch]
-                        set_label: &model.percent(model.sample.mem_fraction()),
-                    },
-                },
-
-                append = &gtk::Box {
-                    set_spacing: 3,
-                    #[watch]
-                    set_visible: model.sample.gpu.is_some(),
-                    append = &gtk::Label {
-                        set_css_classes: &["mango-resource-tag"],
-                        set_label: "GPU",
-                    },
-                    append = &gtk::Label {
-                        set_css_classes: &["mango-resource-value", "gpu"],
-                        #[watch]
-                        set_label: &model.gpu_percent(),
-                    },
-                },
+            set_child = &gtk::Image {
+                set_css_classes: &["mango-widget-icon"],
+                set_icon_name: Some("computer-symbolic"),
             },
         }
     }
@@ -285,12 +252,31 @@ impl SimpleComponent for ResourcesModel {
 
         let popover_open = Arc::new(AtomicBool::new(false));
 
+        // Bar readouts: a symbolic glyph over a small box that fills bottom-up
+        // to the current percentage — narrower than the old "CPU 12%" groups.
+        let cpu_frac = Rc::new(RefCell::new(0.0));
+        let mem_frac = Rc::new(RefCell::new(0.0));
+        let gpu_frac = Rc::new(RefCell::new(0.0));
+        let (cpu_overlay, cpu_fill) = fill_icon("computer-symbolic", "cpu", cpu_frac.clone());
+        let (mem_overlay, mem_fill) = fill_icon("media-flash-symbolic", "mem", mem_frac.clone());
+        let (gpu_overlay, gpu_fill) = fill_icon("video-x-generic-symbolic", "gpu", gpu_frac.clone());
+
+        let icon = gtk::Image::from_icon_name("computer-symbolic");
+        icon.add_css_class("mango-widget-icon");
+
         let mut model = ResourcesModel {
             sample: ResourceSample::default(),
             cpu_hist,
             mem_hist,
             gpu_hist,
             commands: None,
+            gpu_overlay: gpu_overlay.clone(),
+            cpu_fill,
+            mem_fill,
+            gpu_fill,
+            cpu_frac,
+            mem_frac,
+            gpu_frac,
             cpu_value: cpu.value,
             cpu_detail: cpu.detail,
             cpu_graph: cpu.graph,
@@ -308,6 +294,7 @@ impl SimpleComponent for ResourcesModel {
         };
 
         let widgets = view_output!();
+        root.set_child(Some(&icon));
         root.set_popover(Some(&popover));
         crate::anim::pop_in(&popover);
 
@@ -362,6 +349,17 @@ impl ResourcesModel {
     /// Push the whole sample into the popover widgets, skipping work for values
     /// that did not move and only repainting graphs that are actually on screen.
     fn sync(&mut self) {
+        // The bar gauges fill to the same fractions the popover prints.
+        *self.cpu_frac.borrow_mut() = self.sample.cpu;
+        redraw(&self.cpu_fill);
+        *self.mem_frac.borrow_mut() = self.sample.mem_fraction();
+        redraw(&self.mem_fill);
+        if let Some(gpu) = &self.sample.gpu {
+            *self.gpu_frac.borrow_mut() = gpu.util;
+            redraw(&self.gpu_fill);
+        }
+        set_visible(&self.gpu_overlay, self.sample.gpu.is_some());
+
         set_text(&self.cpu_value, &self.percent(self.sample.cpu));
         set_text(&self.cpu_detail, &self.cpu_detail_text());
         redraw(&self.cpu_graph);
@@ -641,7 +639,7 @@ fn draw_spark(
     let _ = cr.stroke();
 }
 
-/// Paint a rounded usage bar: a track with a filled portion.
+/// Paint a usage bar: a track with a filled portion.
 fn draw_usage(
     area: &gtk::DrawingArea,
     cr: &cairo::Context,
@@ -654,7 +652,7 @@ fn draw_usage(
     if w <= 0.0 || h <= 0.0 {
         return;
     }
-    let radius = h / 2.0;
+    let radius = 0.0;
 
     let color = area.style_context().color();
     let (r, g, b) = (
@@ -684,6 +682,52 @@ fn rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
     cr.arc(x + radius, y + radius, radius, pi, 3.0 * pi / 2.0);
     cr.close_path();
 }
+
+
+/// One bar gauge: a symbolic glyph over a small box that fills bottom-up to
+/// the current percentage (`frac`, shared with the model). The fill colour is
+/// read from CSS — the `.mango-resource-fill.{cpu,mem,gpu}` rules — the same
+/// way the sparklines pick up theirs.
+fn fill_icon(icon_name: &str, class: &str, frac: Rc<RefCell<f64>>) -> (gtk::Overlay, gtk::DrawingArea) {
+    let fill = gtk::DrawingArea::new();
+    fill.set_content_width(GAUGE);
+    fill.set_content_height(GAUGE);
+    fill.add_css_class("mango-resource-fill");
+    fill.add_css_class(class);
+    fill.set_draw_func(move |area, cr, w, h| {
+        let value = frac.borrow().clamp(0.0, 1.0);
+        let color = area.style_context().color();
+        let (r, g, b, a) = (
+            color.red() as f64,
+            color.green() as f64,
+            color.blue() as f64,
+            color.alpha() as f64,
+        );
+        // A dim track over the whole box…
+        cr.set_source_rgba(r, g, b, a * 0.14);
+        cr.rectangle(0.0, 0.0, w as f64, h as f64);
+        let _ = cr.fill();
+        // …and the filled portion rising from the bottom.
+        let filled = h as f64 * value;
+        cr.set_source_rgba(r, g, b, a * 0.85);
+        cr.rectangle(0.0, h as f64 - filled, w as f64, filled);
+        let _ = cr.fill();
+    });
+
+    // The glyph rides on top of the fill so it stays readable at any level.
+    let icon = gtk::Image::from_icon_name(icon_name);
+    icon.set_pixel_size(GAUGE);
+    icon.add_css_class("mango-resource-icon");
+    icon.set_halign(gtk::Align::Center);
+    icon.set_valign(gtk::Align::Center);
+
+    let root = gtk::Overlay::new();
+    root.set_child(Some(&fill));
+    root.add_overlay(&icon);
+    root.set_size_request(GAUGE, GAUGE);
+    (root, fill)
+}
+
 
 /// Append `value` to `history`, dropping the oldest sample past [`HISTORY`].
 fn push(history: &Rc<RefCell<Vec<f64>>>, value: f64) {

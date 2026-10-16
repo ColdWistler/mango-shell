@@ -366,6 +366,7 @@ background thread so a slow tool never freezes the bar:
 | **Battery / power** | `/sys/class/power_supply` | shows the charge (and a matching icon); click opens the battery status plus a session menu: lock, log out, suspend, reboot, shut down |
 | **Resources** | `/proc`, `/sys`, `df`, `nvidia-smi` | shows CPU/RAM/GPU; click opens a popover with two-minute sparklines plus a storage list (see below) |
 | **Visualizer** | [`cava`](https://github.com/karlstav/cava) (audio spectrum) | live spectrum bars next to the indicators; optional, hides itself when `cava` is absent |
+| **Now playing** | MPRIS (`org.mpris.MediaPlayer2.*`) over D-Bus | shows the cover + `artist — title`; click opens the artwork, transport buttons and a seek slider; scroll = previous / next; hides itself while nothing plays |
 | **Tray** | `org.kde.StatusNotifierItem` over D-Bus | left = activate, middle = secondary, right = menu |
 
 Clicking **Wi-Fi** shows every visible network, strongest first with the active
@@ -428,6 +429,22 @@ and keeps checking. To tune it, edit the `BARS`/`WIDTH`/`HEIGHT` constants in
 window.mango-bar .mango-visualizer { color: @primary; }
 ```
 
+The **now playing** widget, next to the visualizer, shows the cover art and
+`artist — title` of whatever is playing. It is player-agnostic: it reads
+[MPRIS] (`org.mpris.MediaPlayer2.*`) from whichever player currently owns the
+sound — Sonora, Spotify, Amberol, Rhythmbox, VLC, mpv, or a browser tab mid-video
+— with no per-player setup. Clicking it opens a popover with the full artwork,
+the title/artist/album/player, transport buttons (previous / play-pause / next)
+and a seek slider; scrolling the bar widget skips to the previous or next track.
+Artwork is read straight from a local `file://` path, or fetched from an
+`http(s)` URL with `curl` on a background thread (the same way the volume widget
+uses `pactl`), so a slow network never stalls the bar; decoding is capped so a
+huge poster costs no more than the widget needs. Like the visualizer, the whole
+pill hides itself while nothing is playing. To change the poll cadence or the
+cover sizes, edit the `PLAYING_POLL`/`BAR_COVER`/`POP_COVER` constants in
+`src/widgets/music.rs`.
+
+[MPRIS]: https://specifications.freedesktop.org/mpris-spec/latest/
 
 The **system tray** widget *hosts* `org.kde.StatusNotifierWatcher` itself, so
 no other tray host is needed — any app that publishes a `StatusNotifierItem`
@@ -510,6 +527,9 @@ src/
     tray.rs         TrayModel: StatusNotifierItem host + DBusMenu popover.
     visualizer.rs   VisualizerModel: cava-backed spectrum bars in a cairo
                     DrawingArea; hides itself (and retries) when cava is absent.
+    music.rs        MusicModel: MPRIS "now playing" — cover art + artist — title
+                    in the bar, transport + seek in a popover; reads whichever
+                    player owns the sound and hides itself while nothing plays.
   style.css         Base Material 3 theme (shapes + default tokens), loaded
                     into a custom CssProvider so it can be reloaded live. The
                     selected panel's CSS, theme's tokens and any user

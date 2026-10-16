@@ -30,7 +30,8 @@ pub const BAR_GAP: i32 = 46;
 const BANNER_HEIGHT: i32 = 92;
 
 /// Corner radius of the banner, matching `.mango-flyout-banner` in the CSS.
-const BANNER_RADIUS: f64 = 15.0;
+/// The shell uses sharp, boxy corners, so the banner is square too.
+const BANNER_RADIUS: f64 = 0.0;
 
 /// Turn `window` into a full-width overlay that hugs the top of the monitor,
 /// sits just underneath the shell bar and grabs the keyboard while it is

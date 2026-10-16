@@ -48,7 +48,7 @@ window.mango-bar.panel-blocks .mango-bar-surface {
 window.mango-bar.panel-blocks .mango-group {
     background-color: @layer1;
     border: none;
-    border-radius: 6px;
+    border-radius: 0;
     padding: 0 8px;
     min-height: 26px;
 }

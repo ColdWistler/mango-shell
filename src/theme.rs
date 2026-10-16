@@ -123,7 +123,7 @@ pub fn save_current(id: &str) {
 
 // --- Palette previews -----------------------------------------------------
 
-/// A widget that paints `theme.preview` as five rounded chips.
+/// A widget that paints `theme.preview` as five square chips.
 ///
 /// Used by the bar's popover rows and the gallery cards. The chips are drawn
 /// with cairo so each switcher shows the real palette without per-theme CSS.
@@ -146,7 +146,7 @@ fn draw_preview(cr: &cairo::Context, width: i32, height: i32, colors: &[u32; 5])
     let count = colors.len() as f64;
     let gap = 3.0;
     let segment = ((w - gap * (count - 1.0)) / count).max(1.0);
-    let radius = (h.min(segment) / 2.0).max(1.0);
+    let radius = 0.0;
 
     for (index, color) in colors.iter().enumerate() {
         let x = index as f64 * (segment + gap);

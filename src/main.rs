@@ -250,7 +250,6 @@ impl SimpleComponent for Shell {
                     // theme menu applies themes.
                     .forward(sender.input_sender(), |output| match output {
                         BarOutput::ToggleLauncher => ShellInput::ToggleLauncher,
-                        BarOutput::ToggleWallpaper => ShellInput::ToggleWallpaper,
                         BarOutput::ToggleThemePicker => ShellInput::ToggleTheme,
                         BarOutput::TogglePanelPicker => ShellInput::TogglePanel,
                         BarOutput::ToggleShortcuts => ShellInput::ToggleShortcuts,

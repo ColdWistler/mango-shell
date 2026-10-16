@@ -83,8 +83,6 @@ pub struct Panel {
     pub tray: Slot,
     /// Which slot the Wi-Fi/volume/brightness readouts live in.
     pub system: Slot,
-    /// Which slot the monitor-name label lives in.
-    pub desk: Slot,
     /// Separator style drawn between clusters.
     pub sep: Sep,
     /// Corner radius used when drawing the picker preview.
@@ -118,9 +116,8 @@ pub const PANELS: &[Panel] = &[
         clock: Slot::Center,
         tray: Slot::End,
         system: Slot::End,
-        desk: Slot::End,
         sep: Sep::None,
-        preview_radius: 10.0,
+        preview_radius: 0.0,
         preview_floating: false,
         preview: [0x201b14, 0xc9b890, 0x4a4436, 0x322c23],
     },
@@ -137,9 +134,8 @@ pub const PANELS: &[Panel] = &[
         clock: Slot::End,
         tray: Slot::End,
         system: Slot::End,
-        desk: Slot::End,
         sep: Sep::None,
-        preview_radius: 14.0,
+        preview_radius: 0.0,
         preview_floating: true,
         preview: [0x1f1f1f, 0xffb300, 0xe53935, 0x7cb342],
     },
@@ -156,7 +152,6 @@ pub const PANELS: &[Panel] = &[
         clock: Slot::End,
         tray: Slot::End,
         system: Slot::End,
-        desk: Slot::End,
         sep: Sep::Line,
         preview_radius: 0.0,
         preview_floating: false,
@@ -175,7 +170,6 @@ pub const PANELS: &[Panel] = &[
         clock: Slot::End,
         tray: Slot::End,
         system: Slot::End,
-        desk: Slot::End,
         sep: Sep::Block,
         preview_radius: 0.0,
         preview_floating: false,
@@ -194,9 +188,8 @@ pub const PANELS: &[Panel] = &[
         clock: Slot::End,
         tray: Slot::End,
         system: Slot::End,
-        desk: Slot::Center,
         sep: Sep::Block,
-        preview_radius: 2.0,
+        preview_radius: 0.0,
         preview_floating: false,
         preview: [0x2f343f, 0xc4c7c5, 0xb4bc67, 0x75a4cd],
     },
@@ -213,9 +206,8 @@ pub const PANELS: &[Panel] = &[
         clock: Slot::Center,
         tray: Slot::End,
         system: Slot::End,
-        desk: Slot::End,
         sep: Sep::None,
-        preview_radius: 22.0,
+        preview_radius: 0.0,
         preview_floating: true,
         preview: [0x1f1f1f, 0xe53935, 0x7cb342, 0xffffff],
     },
@@ -232,7 +224,6 @@ pub const PANELS: &[Panel] = &[
         clock: Slot::End,
         tray: Slot::End,
         system: Slot::End,
-        desk: Slot::Start,
         sep: Sep::Line,
         preview_radius: 0.0,
         preview_floating: false,
@@ -328,7 +319,7 @@ fn draw_preview(cr: &cairo::Context, width: i32, height: i32, panel: &Panel) {
     let chip_h = (bar_h * 0.5).max(3.0);
     let chip_y = bar_y + (bar_h - chip_h) / 2.0;
     let chip_w = (bar_w * 0.11).max(6.0);
-    let radius = (chip_h / 2.0).min(6.0);
+    let radius = 0.0;
     let left_x = inset + bar_w * 0.05;
     let right_x = inset + bar_w * 0.95 - chip_w;
 

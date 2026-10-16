@@ -23,6 +23,7 @@ use crate::mango::{self, TagView};
 use crate::panel::{Panel, Sep, Slot};
 use crate::widgets::brightness::BrightnessModel;
 use crate::widgets::clock::ClockModel;
+use crate::widgets::music::MusicModel;
 use crate::widgets::power::PowerModel;
 use crate::widgets::resources::ResourcesModel;
 use crate::widgets::tags::{TagsInput, TagsModel, TagsOutput};
@@ -59,8 +60,6 @@ pub enum BarInput {
 pub enum BarOutput {
     /// The launcher button was pressed.
     ToggleLauncher,
-    /// The wallpaper button was pressed.
-    ToggleWallpaper,
     /// The theme button's gallery row was pressed.
     ToggleThemePicker,
     /// The panel picker button was pressed.
@@ -93,6 +92,8 @@ pub struct BarModel {
     power: Controller<PowerModel>,
     #[allow(dead_code)]
     visualizer: Controller<VisualizerModel>,
+    #[allow(dead_code)]
+    music: Controller<MusicModel>,
     theme_button: Controller<ThemeButtonModel>,
     /// The three CentreBox slots, already populated from the panel layout.
     start_box: gtk::Box,
@@ -159,17 +160,6 @@ impl SimpleComponent for BarModel {
             let _ = click_sender.output(BarOutput::ToggleLauncher);
         });
 
-        let wallpaper_button = gtk::Button::new();
-        wallpaper_button.set_css_classes(&["mango-icon-button"]);
-        wallpaper_button.set_tooltip_text(Some("Wallpaper"));
-        wallpaper_button.set_child(Some(&gtk::Image::from_icon_name(
-            "preferences-desktop-wallpaper-symbolic",
-        )));
-        let wallpaper_sender = sender.clone();
-        wallpaper_button.connect_clicked(move |_| {
-            let _ = wallpaper_sender.output(BarOutput::ToggleWallpaper);
-        });
-
         let panels_button = gtk::Button::new();
         panels_button.set_css_classes(&["mango-icon-button"]);
         panels_button.set_tooltip_text(Some("Panel layout"));
@@ -197,6 +187,10 @@ impl SimpleComponent for BarModel {
         // The audio visualizer owns its own pill (it hides as a whole when
         // `cava` is unavailable), so it is appended as-is below.
         let visualizer = VisualizerModel::builder().launch(()).detach();
+        // "Now playing" over MPRIS: reads whichever player owns the sound, so
+        // it works the same for Sonora as for Spotify, VLC, mpv or a browser
+        // tab. It also owns its pill and hides itself while nothing plays.
+        let music = MusicModel::builder().launch(()).detach();
         // The theme menu lives in the bar but the stylesheet lives in the
         // shell, so its choices go straight to the bar's output.
         let theme_button = ThemeButtonModel::builder().launch(init.theme).forward(
@@ -211,59 +205,37 @@ impl SimpleComponent for BarModel {
         // panel starts from the same building blocks and CSS handles the
         // rest. ----------------------------------------------------------
 
-        // The launcher/wallpaper/theme/panel buttons sit together, bare.
-        let apps = horizontal_cluster(&[], 6, gtk::Align::Center);
-        apps.append(&launcher_button);
-        apps.append(&wallpaper_button);
-        apps.append(theme_button.widget());
-        apps.append(&panels_button);
+        // --- Build the requested layout ------------------------------
+        // Left: app launcher, theme, panel button, music player, cava
+        let left = horizontal_cluster(&[], 6, gtk::Align::Start);
+        left.append(&launcher_button);
+        left.append(theme_button.widget());
+        left.append(&panels_button);
+        left.append(music.widget());
+        left.append(visualizer.widget());
 
-        // Workspace pills.
-        let tags_cluster = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
-        tags_cluster.append(tags.widget());
+        // Center: workspaces
+        let center = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
+        center.append(tags.widget());
 
-        // The clock in its own pill.
-        let clock_cluster = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
-        clock_cluster.append(clock.widget());
+        // Right: system resource, date/time, wifi, volume, brightness, battery
+        // Group system controls closer to save space
+        let right = horizontal_cluster(&["mango-group", "mango-system"], 2, gtk::Align::End);
+        right.append(resources.widget());
+        right.append(clock.widget());
+        right.append(wifi.widget());
+        right.append(volume.widget());
+        right.append(brightness.widget());
+        right.append(power.widget());
+        let right_extra = horizontal_cluster(&[], 4, gtk::Align::End);
+        right_extra.append(tray.widget());
 
-        // The tray brings its own `.mango-group` (and hides itself when
-        // empty), so it is appended as-is.
-        let tray_widget = tray.widget().clone().upcast::<gtk::Widget>();
-
-        // The system indicators share one pill, each separated from the next by
-        // a hairline divider so the group reads as distinct widgets rather than
-        // one blob.
-        let system_cluster =
-            horizontal_cluster(&["mango-group", "mango-system"], 0, gtk::Align::Center);
-        let indicators: [&gtk::Widget; 5] = [
-            wifi.widget().upcast_ref::<gtk::Widget>(),
-            volume.widget().upcast_ref::<gtk::Widget>(),
-            brightness.widget().upcast_ref::<gtk::Widget>(),
-            resources.widget().upcast_ref::<gtk::Widget>(),
-            power.widget().upcast_ref::<gtk::Widget>(),
-        ];
-        append_with_dividers(&system_cluster, &indicators);
-
-        // The audio visualizer is its own pill (its root already carries
-        // `mango-group`), so it is appended as-is and placed in the same slot
-        // as the system indicators.
-        let visualizer_widget = visualizer.widget().clone().upcast::<gtk::Widget>();
-
-        // Which monitor this bar belongs to.
-        let desk_cluster = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
-        let name_label = gtk::Label::new(Some(&init.name));
-        name_label.add_css_class("mango-status");
-        desk_cluster.append(&name_label);
-
-        // --- Distribute them into the slots the panel asked for. ----------
+        // --- Distribute into slots directly for this custom layout ----------
         let members: Vec<(Slot, gtk::Widget)> = vec![
-            (panel.apps, apps.upcast()),
-            (panel.tags, tags_cluster.upcast()),
-            (panel.clock, clock_cluster.upcast()),
-            (panel.tray, tray_widget),
-            (panel.system, system_cluster.upcast()),
-            (panel.system, visualizer_widget),
-            (panel.desk, desk_cluster.upcast()),
+            (Slot::Start, left.upcast()),
+            (Slot::Center, center.upcast()),
+            (Slot::End, right.upcast()),
+            (Slot::End, right_extra.upcast()),
         ];
 
         let mut start = Vec::new();
@@ -291,6 +263,7 @@ impl SimpleComponent for BarModel {
             resources,
             power,
             visualizer,
+            music,
             theme_button,
             start_box,
             center_box,
@@ -335,34 +308,23 @@ fn horizontal_cluster(classes: &[&str], spacing: i32, halign: gtk::Align) -> gtk
     cluster
 }
 
-/// Append `widgets` to `cluster`, interleaving a hairline `.mango-divider`
-/// before every widget after the first. Each divider tracks its neighbour's
-/// visibility, so a widget that hides itself (no backlight, say) takes its
-/// leading divider with it instead of leaving a dangling line.
-fn append_with_dividers(cluster: &gtk::Box, widgets: &[&gtk::Widget]) {
-    for (index, widget) in widgets.iter().enumerate() {
-        if index > 0 {
-            let divider = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            divider.add_css_class("mango-divider");
-            divider.set_valign(gtk::Align::Center);
-            (*widget)
-                .bind_property("visible", &divider, "visible")
-                .flags(gtk::glib::BindingFlags::SYNC_CREATE)
-                .build();
-            cluster.append(&divider);
-        }
-        cluster.append(*widget);
-    }
-}
-
 /// Chain `members` into one slot box with 6px spacing and `panel.sep`
 /// separators between consecutive members.
+///
+/// Each separator tracks the member *following* it, so a widget that hides
+/// itself (the now-playing pill while nothing plays, the visualizer without
+/// `cava`) takes its leading separator with it instead of leaving a dangling
+/// line at the edge of the slot.
 fn assemble_slot(class: &str, members: Vec<gtk::Widget>, sep: Sep, halign: gtk::Align) -> gtk::Box {
     let slot = horizontal_cluster(&[class], 6, halign);
     for (index, member) in members.iter().enumerate() {
         if index > 0
             && let Some(separator) = separator(sep)
         {
+            (*member)
+                .bind_property("visible", &separator, "visible")
+                .flags(gtk::glib::BindingFlags::SYNC_CREATE)
+                .build();
             slot.append(&separator);
         }
         slot.append(member);

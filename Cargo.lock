@@ -764,6 +764,7 @@ dependencies = [
  "signal-hook",
  "system-tray",
  "tokio",
+ "zbus",
 ]
 
 [[package]]

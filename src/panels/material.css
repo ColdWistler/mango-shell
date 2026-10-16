@@ -50,3 +50,7 @@ window.mango-bar.panel-material .mango-group {
     background-color: @layer1;
     border-radius: 11px;
 }
+
+window.mango-bar.panel-material button.mango-widget {
+    border-radius: 9999px;
+}
