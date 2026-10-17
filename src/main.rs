@@ -21,6 +21,9 @@
 //!                                          opened from the bar's panel button
 //!   +-- ShortcutsModel       (shortcuts.rs) keyboard-shortcut reference, same
 //!                                          fly-out, opened from the bar
+//!   +-- OverviewModel        (overview.rs)  workspace preview grid — a card
+//!                                          per tag with every window drawn to
+//!                                          scale (bar button or SIGRTMIN+1)
 //! ```
 //!
 //! Why the invisible root? A GTK application needs a window to stay alive, and
@@ -33,6 +36,7 @@ mod carousel;
 mod flyout;
 mod launcher;
 mod mango;
+mod overview;
 mod panel;
 mod shortcuts;
 mod theme;
@@ -48,17 +52,18 @@ use gtk::gdk;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use launcher::{LauncherInput, LauncherModel};
+use overview::{OverviewInput, OverviewModel};
 use panel::{PanelOutput, PanelPickerInput, PanelPickerModel};
 use relm4::prelude::*;
 use shortcuts::{ShortcutsInput, ShortcutsModel};
 use theme::{ThemeOutput, ThemePickerInput, ThemePickerModel};
 use wallpaper::{WallpaperInit, WallpaperInput, WallpaperModel};
 
-use mango::TagView;
+use mango::{ClientView, MonitorView};
 
 /// The shell owns one bar and one wallpaper surface per monitor, the app
-/// launcher, the wallpaper carousel, the theme gallery, and coordinates the
-/// IPC feed.
+/// launcher, the wallpaper carousel, the theme gallery, the workspace
+/// overview, and coordinates the IPC feed.
 struct Shell {
     bars: HashMap<String, Controller<BarModel>>,
     wallpapers: HashMap<String, Controller<WallpaperModel>>,
@@ -71,14 +76,19 @@ struct Shell {
     panel_picker: Controller<PanelPickerModel>,
     /// The keyboard-shortcut reference, opened from the bar.
     shortcuts: Controller<ShortcutsModel>,
+    /// The workspace preview grid, opened from the bar or a keybind.
+    overview: Controller<OverviewModel>,
     /// The wallpaper currently shown, restored from disk at startup.
     current: Option<PathBuf>,
     /// The active theme, restored from disk at startup.
     theme: &'static theme::Theme,
     /// The active panel (bar layout), restored from disk at startup.
     panel: &'static panel::Panel,
-    /// The last tag state per monitor, so rebuilt bars can be repopulated.
-    tags: HashMap<String, Vec<TagView>>,
+    /// The last monitor state per connector, so rebuilt bars can be
+    /// repopulated and the overview always has geometry to scale against.
+    monitors: HashMap<String, MonitorView>,
+    /// The last window list, so the overview can be rebuilt while open.
+    clients: Vec<ClientView>,
     /// The global stylesheet, kept so the theme can be reloaded in place.
     css: gtk::CssProvider,
 }
@@ -91,8 +101,10 @@ enum ShellInput {
     AddMonitor(String),
     /// Tear down the surfaces for this connector.
     RemoveMonitor(String),
-    /// Fresh tag state, keyed by monitor connector name.
-    MangoUpdate(HashMap<String, Vec<TagView>>),
+    /// Fresh monitor state (tags, geometry), keyed by connector name.
+    MangoUpdate(HashMap<String, MonitorView>),
+    /// Fresh window list, for the overview's tiles.
+    ClientsUpdate(Vec<ClientView>),
     /// Show/hide the application launcher (sent on `SIGUSR1`).
     ToggleLauncher,
     /// Show/hide the wallpaper carousel (sent on `SIGUSR2` or the bar button).
@@ -103,6 +115,8 @@ enum ShellInput {
     TogglePanel,
     /// Show/hide the keyboard-shortcut reference (sent by the bar button).
     ToggleShortcuts,
+    /// Show/hide the workspace overview (sent by the bar button or `SIGRTMIN+1`).
+    ToggleOverview,
     /// Apply and remember this theme, reloading the stylesheet.
     SetTheme(String),
     /// Apply and remember this panel, rebuilding every bar.
@@ -198,6 +212,10 @@ impl SimpleComponent for Shell {
         // config each time it opens.
         let shortcuts = ShortcutsModel::builder().launch(current.clone()).detach();
 
+        // The workspace overview watches Mango's IPC itself (like the bar's
+        // tag dispatches), so it only needs the state pushes and its toggle.
+        let overview = OverviewModel::builder().launch(()).detach();
+
         let model = Shell {
             bars: HashMap::new(),
             wallpapers: HashMap::new(),
@@ -206,10 +224,12 @@ impl SimpleComponent for Shell {
             theme_picker,
             panel_picker,
             shortcuts,
+            overview,
             current,
             theme,
             panel,
-            tags: HashMap::new(),
+            monitors: HashMap::new(),
+            clients: Vec::new(),
             css,
         };
 
@@ -223,6 +243,7 @@ impl SimpleComponent for Shell {
         setup_monitor_watcher(&sender);
         sync_monitors(&model.bars, &sender);
         mango::spawn_watcher(sender.clone());
+        mango::spawn_client_watcher(sender.clone());
         spawn_signal_watcher(&sender);
 
         ComponentParts { model, widgets }
@@ -253,6 +274,7 @@ impl SimpleComponent for Shell {
                         BarOutput::ToggleThemePicker => ShellInput::ToggleTheme,
                         BarOutput::TogglePanelPicker => ShellInput::TogglePanel,
                         BarOutput::ToggleShortcuts => ShellInput::ToggleShortcuts,
+                        BarOutput::ToggleOverview => ShellInput::ToggleOverview,
                         BarOutput::SetTheme(id) => ShellInput::SetTheme(id),
                     });
                 // One background surface per monitor, showing the current
@@ -267,11 +289,11 @@ impl SimpleComponent for Shell {
                 self.wallpapers.insert(name.clone(), wallpaper);
                 // A freshly built bar starts empty; repopulate its tags from
                 // the last known state (e.g. right after a panel switch).
-                if let Some(tags) = self.tags.get(&name) {
+                if let Some(monitor) = self.monitors.get(&name) {
                     self.bars
                         .get(&name)
                         .expect("bar just inserted")
-                        .emit(BarInput::SetTags(tags.clone()));
+                        .emit(BarInput::SetTags(monitor.tags.clone()));
                 }
             }
 
@@ -287,12 +309,18 @@ impl SimpleComponent for Shell {
             }
 
             ShellInput::MangoUpdate(update) => {
-                self.tags = update.clone();
-                for (name, tags) in update {
-                    if let Some(controller) = self.bars.get(&name) {
-                        controller.emit(BarInput::SetTags(tags));
+                for (name, monitor) in &update {
+                    if let Some(controller) = self.bars.get(name) {
+                        controller.emit(BarInput::SetTags(monitor.tags.clone()));
                     }
                 }
+                self.monitors = update;
+                self.push_overview_state();
+            }
+
+            ShellInput::ClientsUpdate(clients) => {
+                self.clients = clients;
+                self.push_overview_state();
             }
 
             ShellInput::ToggleLauncher => self.launcher.emit(LauncherInput::Toggle),
@@ -304,6 +332,15 @@ impl SimpleComponent for Shell {
             ShellInput::TogglePanel => self.panel_picker.emit(PanelPickerInput::Toggle),
 
             ShellInput::ToggleShortcuts => self.shortcuts.emit(ShortcutsInput::Toggle),
+
+            ShellInput::ToggleOverview => {
+                // A toggle is also an opening, and the grid draws the shell's
+                // last pushed state: re-read it so the overview can never come
+                // up still showing a window that has since been closed. The
+                // live feed covers whatever happens while it stays open.
+                mango::refresh_clients(sender.clone());
+                self.overview.emit(OverviewInput::Toggle);
+            }
 
             ShellInput::SetTheme(id) => {
                 if !theme::is_known(&id) {
@@ -382,31 +419,50 @@ impl SimpleComponent for Shell {
     }
 }
 
-/// Toggle the launcher on `SIGUSR1` and the wallpaper carousel on `SIGUSR2`.
+impl Shell {
+    /// Hand the overview the whole of what it draws. It keeps its own copy
+    /// (and only repaints while open), so both maps go along every update.
+    fn push_overview_state(&self) {
+        self.overview.emit(OverviewInput::SetState {
+            monitors: self.monitors.clone(),
+            clients: self.clients.clone(),
+        });
+    }
+}
+
+/// Toggle the launcher on `SIGUSR1`, the wallpaper carousel on `SIGUSR2` and
+/// the workspace overview on `SIGRTMIN+1`.
 ///
 /// Mango's keybind spawns a command that signals this process, for example:
 ///
 /// ```ini
 /// bind=SUPER,d,spawn,pkill -SIGUSR1 mango-shell
 /// bind=SUPER,w,spawn,pkill -SIGUSR2 mango-shell
+/// bind=SUPER,t,spawn,pkill -RTMIN+1 mango-shell
 /// ```
 ///
 /// The theme gallery has no signal of its own (Linux only has two user
-/// signals) — open it from the theme menu's "Browse themes…" row instead.
+/// signals, both spoken for) — open it from the theme menu's "Browse themes…"
+/// row instead. The overview uses a realtime signal, the first one available.
 ///
 /// A signal keeps the shell a single instance, unlike spawning a second copy.
 fn spawn_signal_watcher(sender: &ComponentSender<Shell>) {
     use signal_hook::consts::{SIGUSR1, SIGUSR2};
     use signal_hook::iterator::Signals;
 
+    // The first realtime signal; `pkill -RTMIN+1` addresses the same one.
+    // glibc numbers realtime signals from 34, so this is 35.
+    let overview = libc::SIGRTMIN() + 1;
+
     let sender = sender.clone();
     std::thread::spawn(move || {
-        let Ok(mut signals) = Signals::new([SIGUSR1, SIGUSR2]) else {
+        let Ok(mut signals) = Signals::new([SIGUSR1, SIGUSR2, overview]) else {
             return;
         };
         for signal in signals.forever() {
             match signal {
                 SIGUSR2 => sender.input(ShellInput::ToggleWallpaper),
+                signal if signal == overview => sender.input(ShellInput::ToggleOverview),
                 _ => sender.input(ShellInput::ToggleLauncher),
             }
         }

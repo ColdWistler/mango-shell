@@ -71,6 +71,11 @@ the "hug" bar layout. Concretely:
 - The **wallpaper** is drawn by the shell itself — no `swaybg`/`swww`: one
   background surface per monitor, plus a fly-out **picker** holding a grid of
   thumbnails.
+- A **workspace overview**: a fullscreen grid of every tag on the focused
+  monitor, each window drawn to scale as a schematic tile (icon + title, at its
+  real position and size). Click a window to jump to it, drag tiles between
+  cards to move windows, and drive it from the keyboard — the end-4 overview,
+  without the live screenshots a GTK client can't capture.
 - A built-in **theme switcher**: a round button in the left cluster opens a
   popover of palettes (Nord, Catppuccin Mocha, Gruvbox, Tokyo Night, plus the
   built-in Mango), and its *Browse themes…* row opens the fly-out gallery.
@@ -353,6 +358,42 @@ matugen image "$1"
 
 It is a no-op when the script is absent.
 
+### Workspace overview
+
+Press the **overview button** in the bar's left cluster (next to the panel
+button), or the keybind, to open a fullscreen preview of every tag on the
+**focused monitor**:
+
+```ini
+bind=SUPER,t,spawn,pkill -RTMIN+1 mango-shell
+```
+
+`SIGRTMIN+1` (the first realtime signal — Linux only has two user signals, and
+they are spoken for by the launcher and the picker) toggles the overview in the
+already-running shell. This is modelled on the workspaces view from
+[end-4's dots-hyprland](https://github.com/end-4/dots-hyprland): each tag gets a
+**card** — a scaled-down rendition of the monitor — and every window on it is
+drawn as a **tile** at its real position and size, its icon centred and (when
+the tile is big enough) its title underneath. A multi-tag window is drawn on the
+first of its tags.
+
+- **Click a tile** → view its tag and focus that window; **click a card's bare
+  area** → view that tag. Both close the overview.
+- **Middle-click a tile** → close that window (the overview stays open, so you
+  can clear several in one pass).
+- **Drag a tile** onto another card → move the window to that tag.
+- **`1`–`9`** jump straight to a tag; **arrows / `Tab`** move the selection
+  (arrows between cards, `Tab` cycles tiles inside one); **`Enter`** activates
+  the selection — the same as clicking it.
+- **`Escape`**, a **right-click**, or a **click on the backdrop** closes it.
+
+The surface stays live: the shell pushes fresh compositor state on every IPC
+update, so a window that opens, closes or moves repaints the grid while it is
+open. Because Mango's IPC exposes no surface capture (and a GTK client cannot
+screencopy the windows of tags that are not visible), the tiles are
+**schematic** — icon, title and geometry — rather than live thumbnails. Mango's
+own `ALT,Tab,togglejump` overview is unaffected; this one is complementary.
+
 ### Status indicators & system tray
 
 The right-hand cluster is made of small widgets, each polling a backend on a
@@ -503,7 +544,12 @@ src/
                     (~/.config/mango-shell/panel) and PanelPickerModel, a
                     fly-out gallery of bar-layout mocks opened from the bar's
                     panel button.
-  mango.rs          Mango IPC: TagView, monitor stream, tag dispatch.
+  overview.rs       OverviewModel: a fullscreen Overlay-layer workspace
+                    preview — one card per tag of the focused monitor, every
+                    window drawn to scale as a schematic tile. Toggled via
+                    SIGRTMIN+1 or the bar button; click/drag/keyboard on it.
+  mango.rs          Mango IPC: TagView/MonitorView/ClientView streams, tag and
+                    window dispatches (view, focusid, killclient, tag).
   themes/           `@define-color` override blocks per theme; the shell
                     splices the active one between the panel CSS and the user
                     override.
@@ -582,6 +628,7 @@ structure here. The relevant pieces:
 | `widgets/power.rs` | `bar_widgets/battery.rs` | Battery read from sysfs plus a session menu; the bar widget opens a popover of one-shot actions rather than exposing state |
 | `widgets/tray.rs` | `bar_widgets/sys_tray.rs` | `StatusNotifierItem` host + `DBusMenu`. OkShell uses its own D-Bus layer; this uses the `system-tray` crate on a dedicated Tokio runtime thread |
 | `mango.rs` | `crates/okshell-core/src/ipc.rs` | OkShell talks to Hyprland via `wayle`; here `mango-ipc` plays the same role |
+| `overview.rs` | — | No OkShell analogue: ported from [end-4's dots-hyprland](https://github.com/end-4/dots-hyprland) workspaces view. Reads the same `mango-ipc` streams (`MonitorView`/`ClientView`) and positions tiles with plain layout arithmetic against computed (not measured) rects |
 
 Notable differences, and why:
 

@@ -171,7 +171,6 @@ window.mango-bar button.mango-icon-button:active {
     padding: 0 3px;
     font-size: 15px;
 }
-}
 
 /* --- Clock ------------------------------------------------------------ */
 
@@ -1185,4 +1184,146 @@ window.mango-bar button.mango-music-play:hover {
 .mango-music-time {
     color: @on_surface_variant;
     font-size: 12px;
+}
+/* --- Workspace overview ----------------------------------------------- */
+/* A fly-out preview of every tag on the focused monitor: one card per
+ * workspace, with each window drawn to scale as a schematic tile (icon +
+ * title + real geometry). end-4's overview, minus the live screenshots a GTK
+ * client cannot capture — every tag renders, not just the visible one.
+ * Opened from the bar's overview button or `pkill -RTMIN+1 mango-shell`,
+ * it hangs below the bar like the launcher rather than covering the screen. */
+
+window.mango-overview {
+    background-color: transparent;
+    background-image: none;
+    color: @on_surface;
+    font-family: "Google Sans Flex", "Rubik", "Inter", "Cantarell", sans-serif;
+    font-size: 15px;
+}
+
+/* The panel the grid lives in, painted with the same `layer0` the bar and
+ * the fly-out applets use, so a matugen-generated
+ * ~/.config/mango-shell/style.css — which redefines `layer0`, `layer1`,
+ * `layer2` and friends last, and therefore wins — tints it exactly like the
+ * rest of the shell.
+ *
+ * It used to read `@scrim`, the one surface matugen emits as a flat opaque
+ * `#000000`: a black slab that picked up nothing from the wallpaper, which
+ * is why the overview looked unthemed next to everything else. The extra
+ * `alpha` keeps the panel a little transparent, so the compositor's layer
+ * blur (blur_layer=1) reads as frost behind the cards instead of being
+ * painted over — tune the 0.8 for more or less of the desktop showing
+ * through. The surface spans the monitor, so centring this card leaves the
+ * desktop visible down either side of it. Padding and border must match
+ * PANEL_PAD_* in overview.rs, which places the grid by arithmetic rather
+ * than measurement. */
+.mango-overview-panel {
+    background-color: alpha(@layer0, 0.8);
+    border: 1px solid alpha(@layer0_border, 0.6);
+    border-radius: 0;
+    padding: 18px 18px 42px;
+}
+
+/* One card per tag: a mini screen to scale the monitor into. */
+.mango-ov-card {
+    background-color: alpha(@layer1, 0.72);
+    border: 1px solid @layer0_border;
+    border-radius: 0;
+}
+
+/* The big faded tag number sitting behind the windows. */
+.mango-ov-number {
+    color: alpha(@on_surface, 0.13);
+    font-size: 44px;
+    font-weight: 700;
+}
+
+/* The tag the user is actually on. */
+.mango-ov-card.active {
+    background-color: alpha(@layer2, 0.9);
+}
+
+/* The active card's number is more prominent, but it deliberately stays
+ * neutral. It used to turn `@primary` — the very hue the window indicator
+ * uses, at the very same alpha — and since a newly opened app is focused, its
+ * tile drew a primary rectangle (and, when it was also the keyboard
+ * selection, a primary fill at exactly `alpha(@primary, 0.22)`) right over a
+ * primary-coloured digit: the number dissolved into the indicator and looked
+ * broken. The card's brighter background already marks the active tag, so the
+ * number only needs to read as a watermark. */
+.mango-ov-card.active .mango-ov-number {
+    color: alpha(@on_surface, 0.2);
+}
+
+/* A tag that wants attention. */
+.mango-ov-card.urgent {
+    border-color: @error;
+}
+
+/* Pointer feedback: the card under the cursor, and the card a drag would
+ * drop onto. */
+.mango-ov-card.hover {
+    background-color: alpha(@layer2, 0.85);
+}
+
+.mango-ov-card.drop {
+    background-color: alpha(@primary_container, 0.55);
+    border-color: @primary;
+}
+
+/* Keyboard selection. */
+.mango-ov-card.selected {
+    border-color: @primary;
+}
+
+/* A window tile: a schematic rectangle at the window's real place and size. */
+.mango-ov-tile {
+    background-color: alpha(@layer2, 0.92);
+    border: 1px solid @divider;
+    border-radius: 0;
+    padding: 2px 4px;
+}
+
+.mango-ov-tile.focused {
+    background-color: alpha(@layer2, 0.97);
+    border-color: @primary;
+}
+
+/* Floating and pinned windows read differently at a glance. */
+.mango-ov-tile.floating {
+    border-style: dashed;
+}
+
+.mango-ov-tile.global {
+    border-color: @on_tertiary_container;
+}
+
+.mango-ov-tile.selected {
+    background-color: alpha(@primary, 0.22);
+    border-color: @primary;
+}
+
+.mango-ov-tile.dragging {
+    opacity: 0.35;
+}
+
+.mango-ov-tile-title {
+    color: alpha(@on_surface_variant, 0.85);
+    font-size: 11px;
+}
+
+/* The bottom hint line. */
+.mango-overview-hint {
+    color: alpha(@on_surface_variant, 0.6);
+    font-size: 13px;
+}
+
+/* The pill that follows the pointer while dragging a window. */
+.mango-overview-ghost {
+    background-color: @layer2;
+    border: 1px solid @primary;
+    border-radius: 0;
+    padding: 4px 12px;
+    color: @on_surface;
+    font-size: 13px;
 }

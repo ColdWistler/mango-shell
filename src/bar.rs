@@ -66,6 +66,8 @@ pub enum BarOutput {
     TogglePanelPicker,
     /// The shortcuts button was pressed.
     ToggleShortcuts,
+    /// The overview button was pressed.
+    ToggleOverview,
     /// A theme was picked in the bar's popover.
     SetTheme(String),
 }
@@ -169,6 +171,18 @@ impl SimpleComponent for BarModel {
             let _ = panels_sender.output(BarOutput::TogglePanelPicker);
         });
 
+        // The workspace overview (all tags of the focused monitor, with every
+        // window drawn to scale). Also reachable from a keybind — see
+        // `spawn_signal_watcher` in main.rs.
+        let overview_button = gtk::Button::new();
+        overview_button.set_css_classes(&["mango-icon-button"]);
+        overview_button.set_tooltip_text(Some("Workspace overview"));
+        overview_button.set_child(Some(&gtk::Image::from_icon_name("focus-windows-symbolic")));
+        let overview_sender = sender.clone();
+        overview_button.connect_clicked(move |_| {
+            let _ = overview_sender.output(BarOutput::ToggleOverview);
+        });
+
         let tags = TagsModel::builder()
             .launch(())
             .forward(sender.input_sender(), BarInput::SwitchTag);
@@ -211,6 +225,7 @@ impl SimpleComponent for BarModel {
         left.append(&launcher_button);
         left.append(theme_button.widget());
         left.append(&panels_button);
+        left.append(&overview_button);
         left.append(music.widget());
         left.append(visualizer.widget());
 

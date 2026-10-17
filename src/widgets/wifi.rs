@@ -12,7 +12,9 @@ use std::rc::Rc;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::Duration;
 
+use gtk::glib;
 use gtk::prelude::*;
+use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use relm4::prelude::*;
 
 /// How often the state is re-read, in milliseconds.
@@ -89,9 +91,8 @@ impl SimpleComponent for WifiModel {
 
     view! {
         #[root]
-        gtk::MenuButton {
+        gtk::Button {
             set_css_classes: &["mango-widget"],
-            set_always_show_arrow: false,
             #[watch]
             set_tooltip_text: Some(&model.tooltip()),
 
@@ -223,8 +224,46 @@ impl SimpleComponent for WifiModel {
         };
 
         let widgets = view_output!();
-        root.set_popover(Some(&popover));
+
+        // The popover is parented to the button by hand so that we can set
+        // the bar's keyboard interactivity before the popup is created and
+        // defer the popup to an idle callback (both are required for wlroots:
+        // the popup inherits the parent's keyboard mode at creation, and the
+        // new mode only takes effect once the layer surface commits it).
+        popover.set_parent(&root);
+        popover.set_position(gtk::PositionType::Bottom);
         crate::anim::pop_in(&popover);
+
+        let button = root.downgrade();
+        root.connect_clicked({
+            let popover = popover.clone();
+            let button = button.clone();
+            move |_| {
+                if popover.is_visible() {
+                    popover.popdown();
+                    return;
+                }
+                if let Some(root) = button.upgrade() {
+                    set_bar_keyboard(&root, KeyboardMode::Exclusive);
+                    let popover = popover.clone();
+                    let button = button.clone();
+                    glib::idle_add_local_once(move || {
+                        if button.upgrade().is_some() {
+                            popover.popup();
+                        }
+                    });
+                }
+            }
+        });
+
+        popover.connect_closed({
+            let button = button.clone();
+            move |_| {
+                if let Some(root) = button.upgrade() {
+                    set_bar_keyboard(&root, KeyboardMode::None);
+                }
+            }
+        });
 
         refresh.connect_clicked({
             let sender = sender.clone();
@@ -287,7 +326,13 @@ impl SimpleComponent for WifiModel {
                     self.prompt_entry.set_text("");
                     self.set_status(None);
                     self.update_visibility();
-                    self.prompt_entry.grab_focus();
+                    // The prompt was just made visible; focus it once it has
+                    // been mapped, otherwise the grab is dropped and typing
+                    // goes nowhere until the entry is clicked.
+                    let entry = self.prompt_entry.clone();
+                    glib::idle_add_local_once(move || {
+                        entry.grab_focus();
+                    });
                 } else {
                     self.send(Command::Connect {
                         ssid: network.ssid.clone(),
@@ -406,6 +451,18 @@ impl WifiModel {
             Some(ssid) => format!("{ssid} — {}%", self.state.signal),
             None => "Wi-Fi not connected".to_string(),
         }
+    }
+}
+
+/// Give the bar's layer-shell surface keyboard interactivity while a popover
+/// with an entry is open, and take it back afterwards.
+///
+/// A `GtkPopover` anchored to the bar is a child of the bar's layer surface,
+/// and layer surfaces default to `KeyboardMode::None`, so without this the
+/// compositor never routes key events to the password field.
+fn set_bar_keyboard(widget: &impl IsA<gtk::Widget>, mode: KeyboardMode) {
+    if let Some(window) = widget.root().and_downcast::<gtk::Window>() {
+        window.set_keyboard_mode(mode);
     }
 }
 
