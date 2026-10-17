@@ -91,6 +91,7 @@ struct Shell {
     clients: Vec<ClientView>,
     /// The global stylesheet, kept so the theme can be reloaded in place.
     css: gtk::CssProvider,
+    has_mango: bool,
 }
 
 #[derive(Debug)]
@@ -215,7 +216,8 @@ impl SimpleComponent for Shell {
         // The workspace overview watches Mango's IPC itself (like the bar's
         // tag dispatches), so it only needs the state pushes and its toggle.
         let overview = OverviewModel::builder().launch(()).detach();
-
+        let has_mango = mango::has_mango_session();
+        
         let model = Shell {
             bars: HashMap::new(),
             wallpapers: HashMap::new(),
@@ -231,6 +233,7 @@ impl SimpleComponent for Shell {
             monitors: HashMap::new(),
             clients: Vec::new(),
             css,
+            has_mango,
         };
 
         let widgets = view_output!();
@@ -242,8 +245,10 @@ impl SimpleComponent for Shell {
 
         setup_monitor_watcher(&sender);
         sync_monitors(&model.bars, &sender);
-        mango::spawn_watcher(sender.clone());
-        mango::spawn_client_watcher(sender.clone());
+        if has_mango {
+            mango::spawn_watcher(sender.clone());
+            mango::spawn_client_watcher(sender.clone());
+        }
         spawn_signal_watcher(&sender);
 
         ComponentParts { model, widgets }
@@ -289,11 +294,18 @@ impl SimpleComponent for Shell {
                 self.wallpapers.insert(name.clone(), wallpaper);
                 // A freshly built bar starts empty; repopulate its tags from
                 // the last known state (e.g. right after a panel switch).
-                if let Some(monitor) = self.monitors.get(&name) {
+                if self.has_mango {
+                    if let Some(monitor) = self.monitors.get(&name) {
+                        self.bars
+                            .get(&name)
+                            .expect("bar just inserted")
+                            .emit(BarInput::SetTags(monitor.tags.clone()));
+                    }
+                } else {
                     self.bars
                         .get(&name)
                         .expect("bar just inserted")
-                        .emit(BarInput::SetTags(monitor.tags.clone()));
+                        .emit(BarInput::SetTags(Vec::new()));
                 }
             }
 
@@ -309,18 +321,22 @@ impl SimpleComponent for Shell {
             }
 
             ShellInput::MangoUpdate(update) => {
-                for (name, monitor) in &update {
-                    if let Some(controller) = self.bars.get(name) {
-                        controller.emit(BarInput::SetTags(monitor.tags.clone()));
+                if self.has_mango {
+                    for (name, monitor) in &update {
+                        if let Some(controller) = self.bars.get(name) {
+                            controller.emit(BarInput::SetTags(monitor.tags.clone()));
+                        }
                     }
+                    self.monitors = update;
+                    self.push_overview_state();
                 }
-                self.monitors = update;
-                self.push_overview_state();
             }
 
             ShellInput::ClientsUpdate(clients) => {
-                self.clients = clients;
-                self.push_overview_state();
+                if self.has_mango {
+                    self.clients = clients;
+                    self.push_overview_state();
+                }
             }
 
             ShellInput::ToggleLauncher => self.launcher.emit(LauncherInput::Toggle),
@@ -338,7 +354,9 @@ impl SimpleComponent for Shell {
                 // last pushed state: re-read it so the overview can never come
                 // up still showing a window that has since been closed. The
                 // live feed covers whatever happens while it stays open.
-                mango::refresh_clients(sender.clone());
+                if self.has_mango {
+                    mango::refresh_clients(sender.clone());
+                }
                 self.overview.emit(OverviewInput::Toggle);
             }
 
@@ -423,10 +441,12 @@ impl Shell {
     /// Hand the overview the whole of what it draws. It keeps its own copy
     /// (and only repaints while open), so both maps go along every update.
     fn push_overview_state(&self) {
-        self.overview.emit(OverviewInput::SetState {
-            monitors: self.monitors.clone(),
-            clients: self.clients.clone(),
-        });
+        if self.has_mango {
+            self.overview.emit(OverviewInput::SetState {
+                monitors: self.monitors.clone(),
+                clients: self.clients.clone(),
+            });
+        }
     }
 }
 

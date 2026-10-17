@@ -30,6 +30,10 @@ use crate::{Shell, ShellInput};
 /// that the shell catches up before anyone notices.
 const RECONNECT_DELAY: Duration = Duration::from_millis(500);
 
+pub fn has_mango_session() -> bool {
+    BlockingSocket::try_default().is_ok()
+}
+
 /// The small, UI-friendly subset of a tag that the bar cares about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TagView {

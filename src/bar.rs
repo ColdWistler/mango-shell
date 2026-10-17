@@ -307,7 +307,11 @@ impl SimpleComponent for BarModel {
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         match msg {
             BarInput::SetTags(tags) => self.tags.emit(TagsInput::Set(tags)),
-            BarInput::SwitchTag(TagsOutput::Switch(index)) => mango::switch_tag(index),
+            BarInput::SwitchTag(TagsOutput::Switch(index)) => {
+                if crate::mango::has_mango_session() {
+                    mango::switch_tag(index);
+                }
+            }
             BarInput::SetTheme(id) => self.theme_button.emit(ThemeButtonInput::SetTheme(id)),
         }
     }
