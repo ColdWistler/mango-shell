@@ -445,8 +445,8 @@ fn percent_from_totals(dir: &Path) -> Option<u32> {
     for (now, full) in [("charge_now", "charge_full"), ("energy_now", "energy_full")] {
         let now = read_trim(dir, now)?.parse::<u64>().ok()?;
         let full = read_trim(dir, full)?.parse::<u64>().ok()?;
-        if full > 0 {
-            return Some(((now.saturating_mul(100)) / full) as u32);
+        if let Some(percent) = now.saturating_mul(100).checked_div(full) {
+            return Some(percent as u32);
         }
     }
     None

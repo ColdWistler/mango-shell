@@ -4,7 +4,9 @@
 //! clicking the widget opens a popover with the full picture:
 //!
 //! * **CPU** — usage, cores, average frequency and the 1-minute load;
-//! * **Memory** — used/total plus swap;
+//! * **Memory** — a used / cache / free breakdown, so the reclaimable cache
+//!   (idle memory the kernel can hand back) is told apart from memory that is
+//!   actually held by applications, plus swap;
 //! * **GPU** — utilisation, VRAM and temperature (NVIDIA via `nvidia-smi`,
 //!   AMD via `sysfs`); the row hides itself when no supported GPU is found;
 //! * **Storage** — the busiest mounted filesystems (`df`).
@@ -54,10 +56,15 @@ const GPU_RETRY_TICKS: u32 = 15;
 const GRAPH_H: i32 = 40;
 /// Width of a storage usage bar, in pixels.
 const USAGE_W: i32 = 56;
-/// Side of a bar gauge, in pixels.
-const GAUGE: i32 = 16;
+/// Height of the memory breakdown bar, in pixels.
+const MEM_BAR_H: i32 = 10;
 /// Usage at or above this fraction is painted in the warning colour.
 const HIGH: f64 = 0.90;
+/// The three memory segments all share the block's colour and are told apart by
+/// these alphas: apps (used) solid, reclaimable cache mid, untouched free faint.
+const MEM_USED_ALPHA: f64 = 0.95;
+const MEM_CACHE_ALPHA: f64 = 0.42;
+const MEM_FREE_ALPHA: f64 = 0.14;
 /// Filesystems to keep out of the Storage list even if `df` reports them.
 const SKIP_MOUNTS: &[&str] = &["/sys", "/proc", "/dev", "/run", "/snap"];
 
@@ -86,11 +93,7 @@ pub struct DiskUsage {
 
 impl DiskUsage {
     fn fraction(&self) -> f64 {
-        if self.total == 0 {
-            0.0
-        } else {
-            (self.used as f64 / self.total as f64).clamp(0.0, 1.0)
-        }
+        fraction(self.used, self.total)
     }
 }
 
@@ -99,7 +102,11 @@ impl DiskUsage {
 pub struct ResourceSample {
     /// CPU busy fraction in `0.0..=1.0`.
     pub cpu: f64,
+    /// Memory held by applications: `MemTotal - MemAvailable`, the same figure
+    /// `free` reports as "used" (it excludes reclaimable cache).
     pub mem_used: u64,
+    /// Completely untouched memory (`MemFree`).
+    pub mem_free: u64,
     pub mem_total: u64,
     pub swap_used: u64,
     pub swap_total: u64,
@@ -113,12 +120,29 @@ pub struct ResourceSample {
 }
 
 impl ResourceSample {
+    /// Fraction of RAM held by applications (excludes reclaimable cache).
     fn mem_fraction(&self) -> f64 {
-        if self.mem_total == 0 {
-            0.0
-        } else {
-            (self.mem_used as f64 / self.mem_total as f64).clamp(0.0, 1.0)
-        }
+        fraction(self.mem_used, self.mem_total)
+    }
+
+    /// Reclaimable, idle memory: what the kernel could free on demand. This is
+    /// `MemAvailable - MemFree`, which is exactly the page cache and reclaimable
+    /// slab `free` folds into "buff/cache" — computed from the two figures the
+    /// kernel already publishes so it stays correct across kernel versions.
+    fn mem_cache(&self) -> u64 {
+        self.mem_total
+            .saturating_sub(self.mem_used)
+            .saturating_sub(self.mem_free)
+    }
+
+    /// Fraction of RAM that is reclaimable cache.
+    fn mem_cache_fraction(&self) -> f64 {
+        fraction(self.mem_cache(), self.mem_total)
+    }
+
+    /// Fraction of RAM that is completely free.
+    fn mem_free_fraction(&self) -> f64 {
+        fraction(self.mem_free, self.mem_total)
     }
 }
 
@@ -143,6 +167,14 @@ pub struct ResourcesModel {
     mem_value: gtk::Label,
     mem_detail: gtk::Label,
     mem_graph: gtk::DrawingArea,
+    /// The Memory block's used / cache / free breakdown: the bar is shared with
+    /// the model through `mem_parts`, and the three labels spell the segments
+    /// out in bytes.
+    mem_bar: gtk::DrawingArea,
+    mem_parts: Rc<RefCell<MemParts>>,
+    mem_used_label: gtk::Label,
+    mem_cache_label: gtk::Label,
+    mem_free_label: gtk::Label,
     gpu_value: gtk::Label,
     gpu_detail: gtk::Label,
     gpu_graph: gtk::DrawingArea,
@@ -155,17 +187,6 @@ pub struct ResourcesModel {
     storage_box: gtk::Box,
     /// The rows currently rendered, so unchanged polls skip the rebuild.
     rendered_disks: Vec<DiskUsage>,
-    /// The bar gauges: a symbolic glyph over a box that fills bottom-up to the
-    /// percentage. The overlays themselves live in the row built in `init`;
-    /// the model owns the drawing areas (to repaint them), their shared
-    /// fractions, and a handle to the GPU gauge so it can hide on a desktop.
-    gpu_overlay: gtk::Overlay,
-    cpu_fill: gtk::DrawingArea,
-    mem_fill: gtk::DrawingArea,
-    gpu_fill: gtk::DrawingArea,
-    cpu_frac: Rc<RefCell<f64>>,
-    mem_frac: Rc<RefCell<f64>>,
-    gpu_frac: Rc<RefCell<f64>>,
 }
 
 #[derive(Debug)]
@@ -221,13 +242,27 @@ impl SimpleComponent for ResourcesModel {
         title.add_css_class("mango-applet-title");
         content.append(&title);
 
-        let cpu = metric_block("CPU", "computer-symbolic", "cpu", cpu_hist.clone());
+        let cpu = metric_block("CPU", "computer-symbolic", "cpu", cpu_hist.clone(), None);
         content.append(&cpu.root);
 
-        let mem = metric_block("Memory", "media-flash-symbolic", "mem", mem_hist.clone());
+        // Memory gets an extra used / cache / free breakdown under its graph.
+        let breakdown = mem_breakdown();
+        let mem = metric_block(
+            "Memory",
+            "media-flash-symbolic",
+            "mem",
+            mem_hist.clone(),
+            Some(&breakdown.root),
+        );
         content.append(&mem.root);
 
-        let gpu = metric_block("GPU", "video-x-generic-symbolic", "gpu", gpu_hist.clone());
+        let gpu = metric_block(
+            "GPU",
+            "video-x-generic-symbolic",
+            "gpu",
+            gpu_hist.clone(),
+            None,
+        );
         let gpu_sep = gtk::Separator::new(gtk::Orientation::Horizontal);
         gpu_sep.add_css_class("mango-applet-sep");
         content.append(&gpu_sep);
@@ -252,15 +287,6 @@ impl SimpleComponent for ResourcesModel {
 
         let popover_open = Arc::new(AtomicBool::new(false));
 
-        // Bar readouts: a symbolic glyph over a small box that fills bottom-up
-        // to the current percentage — narrower than the old "CPU 12%" groups.
-        let cpu_frac = Rc::new(RefCell::new(0.0));
-        let mem_frac = Rc::new(RefCell::new(0.0));
-        let gpu_frac = Rc::new(RefCell::new(0.0));
-        let (cpu_overlay, cpu_fill) = fill_icon("computer-symbolic", "cpu", cpu_frac.clone());
-        let (mem_overlay, mem_fill) = fill_icon("media-flash-symbolic", "mem", mem_frac.clone());
-        let (gpu_overlay, gpu_fill) = fill_icon("video-x-generic-symbolic", "gpu", gpu_frac.clone());
-
         let icon = gtk::Image::from_icon_name("computer-symbolic");
         icon.add_css_class("mango-widget-icon");
 
@@ -270,19 +296,17 @@ impl SimpleComponent for ResourcesModel {
             mem_hist,
             gpu_hist,
             commands: None,
-            gpu_overlay: gpu_overlay.clone(),
-            cpu_fill,
-            mem_fill,
-            gpu_fill,
-            cpu_frac,
-            mem_frac,
-            gpu_frac,
             cpu_value: cpu.value,
             cpu_detail: cpu.detail,
             cpu_graph: cpu.graph,
             mem_value: mem.value,
             mem_detail: mem.detail,
             mem_graph: mem.graph,
+            mem_bar: breakdown.bar,
+            mem_parts: breakdown.parts,
+            mem_used_label: breakdown.used,
+            mem_cache_label: breakdown.cache,
+            mem_free_label: breakdown.free,
             gpu_value: gpu.value,
             gpu_detail: gpu.detail,
             gpu_graph: gpu.graph,
@@ -349,17 +373,6 @@ impl ResourcesModel {
     /// Push the whole sample into the popover widgets, skipping work for values
     /// that did not move and only repainting graphs that are actually on screen.
     fn sync(&mut self) {
-        // The bar gauges fill to the same fractions the popover prints.
-        *self.cpu_frac.borrow_mut() = self.sample.cpu;
-        redraw(&self.cpu_fill);
-        *self.mem_frac.borrow_mut() = self.sample.mem_fraction();
-        redraw(&self.mem_fill);
-        if let Some(gpu) = &self.sample.gpu {
-            *self.gpu_frac.borrow_mut() = gpu.util;
-            redraw(&self.gpu_fill);
-        }
-        set_visible(&self.gpu_overlay, self.sample.gpu.is_some());
-
         set_text(&self.cpu_value, &self.percent(self.sample.cpu));
         set_text(&self.cpu_detail, &self.cpu_detail_text());
         redraw(&self.cpu_graph);
@@ -367,6 +380,28 @@ impl ResourcesModel {
         set_text(&self.mem_value, &self.percent(self.sample.mem_fraction()));
         set_text(&self.mem_detail, &self.mem_detail_text());
         redraw(&self.mem_graph);
+
+        // The breakdown bar reads the shared fractions; the legend spells the
+        // same three segments out in bytes.
+        {
+            let mut parts = self.mem_parts.borrow_mut();
+            parts.used = self.sample.mem_fraction();
+            parts.cache = self.sample.mem_cache_fraction();
+            parts.free = self.sample.mem_free_fraction();
+        }
+        redraw(&self.mem_bar);
+        set_text(
+            &self.mem_used_label,
+            &format!("used {}", human(self.sample.mem_used)),
+        );
+        set_text(
+            &self.mem_cache_label,
+            &format!("cache {}", human(self.sample.mem_cache())),
+        );
+        set_text(
+            &self.mem_free_label,
+            &format!("free {}", human(self.sample.mem_free)),
+        );
 
         let has_gpu = self.sample.gpu.is_some();
         set_visible(&self.gpu_block, has_gpu);
@@ -456,9 +491,12 @@ impl ResourcesModel {
 
     fn tooltip(&self) -> String {
         let mut text = format!(
-            "CPU {} · RAM {}",
+            "CPU {} · RAM {} ({} used · {} cache · {} free)",
             self.percent(self.sample.cpu),
-            self.percent(self.sample.mem_fraction())
+            self.percent(self.sample.mem_fraction()),
+            human(self.sample.mem_used),
+            human(self.sample.mem_cache()),
+            human(self.sample.mem_free),
         );
         if let Some(gpu) = &self.sample.gpu {
             text.push_str(&format!(" · GPU {}", self.percent(gpu.util)));
@@ -475,13 +513,16 @@ struct MetricBlock {
     graph: gtk::DrawingArea,
 }
 
-/// Build one metric block: a header (icon, name, value), a sparkline and a
-/// detail line. `class` picks both the icon and the graph colour.
+/// Build one metric block: a header (icon, name, value), a sparkline, an
+/// optional extra widget and a detail line. `class` picks both the icon and the
+/// graph colour; `extra` is inserted between the graph and the detail (the
+/// Memory block uses it for its used / cache / free breakdown).
 fn metric_block(
     title: &str,
     icon_name: &str,
     class: &str,
     history: Rc<RefCell<Vec<f64>>>,
+    extra: Option<&gtk::Box>,
 ) -> MetricBlock {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 4);
     root.add_css_class("mango-resource-metric");
@@ -520,6 +561,10 @@ fn metric_block(
     });
     root.append(&graph);
 
+    if let Some(extra) = extra {
+        root.append(extra);
+    }
+
     let detail = gtk::Label::new(None);
     detail.add_css_class("mango-resource-detail");
     detail.set_xalign(0.0);
@@ -532,6 +577,141 @@ fn metric_block(
         detail,
         graph,
     }
+}
+
+/// The three memory segments, as fractions of total RAM, shared between the
+/// model and the breakdown bar's draw function.
+#[derive(Debug, Clone, Copy, Default)]
+struct MemParts {
+    used: f64,
+    cache: f64,
+    free: f64,
+}
+
+/// The Memory block's extra widgets: a segmented bar and the legend whose
+/// labels the model keeps in sync.
+struct MemBreakdown {
+    root: gtk::Box,
+    bar: gtk::DrawingArea,
+    parts: Rc<RefCell<MemParts>>,
+    used: gtk::Label,
+    cache: gtk::Label,
+    free: gtk::Label,
+}
+
+/// Build the used / cache / free breakdown: a bar that reads `MemParts` and a
+/// legend of three colour-keyed labels.
+fn mem_breakdown() -> MemBreakdown {
+    let parts = Rc::new(RefCell::new(MemParts::default()));
+
+    let bar = gtk::DrawingArea::new();
+    bar.set_content_height(MEM_BAR_H);
+    bar.set_hexpand(true);
+    bar.add_css_class("mango-resource-mem-bar");
+    bar.set_draw_func({
+        let parts = parts.clone();
+        move |area, cr, width, height| draw_mem_bar(area, cr, width, height, &parts.borrow())
+    });
+
+    let legend = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    legend.add_css_class("mango-resource-legend");
+    let used = mem_legend_entry(&legend, "used", MEM_USED_ALPHA);
+    let cache = mem_legend_entry(&legend, "cache", MEM_CACHE_ALPHA);
+    let free = mem_legend_entry(&legend, "free", MEM_FREE_ALPHA);
+
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    root.add_css_class("mango-resource-breakdown");
+    root.append(&bar);
+    root.append(&legend);
+
+    MemBreakdown {
+        root,
+        bar,
+        parts,
+        used,
+        cache,
+        free,
+    }
+}
+
+/// One legend entry: a colour swatch matching a bar segment, then its label.
+fn mem_legend_entry(legend: &gtk::Box, class: &str, alpha: f64) -> gtk::Label {
+    let entry = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+    entry.set_hexpand(true);
+
+    let swatch = gtk::DrawingArea::new();
+    swatch.set_content_width(9);
+    swatch.set_content_height(9);
+    swatch.set_valign(gtk::Align::Center);
+    swatch.add_css_class("mango-resource-swatch");
+    swatch.add_css_class(class);
+    swatch
+        .set_draw_func(move |area, cr, width, height| draw_swatch(area, cr, width, height, alpha));
+    entry.append(&swatch);
+
+    let label = gtk::Label::new(None);
+    label.add_css_class("mango-resource-legend-value");
+    label.add_css_class(class);
+    label.set_xalign(0.0);
+    entry.append(&label);
+
+    legend.append(&entry);
+    label
+}
+
+/// Paint the breakdown bar: a faint free track, the cache band, then the used
+/// portion on top — all in the block's CSS colour, told apart by alpha.
+fn draw_mem_bar(
+    area: &gtk::DrawingArea,
+    cr: &cairo::Context,
+    width: i32,
+    height: i32,
+    parts: &MemParts,
+) {
+    let w = f64::from(width);
+    let h = f64::from(height);
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
+    let color = area.style_context().color();
+    let (r, g, b) = (
+        f64::from(color.red()),
+        f64::from(color.green()),
+        f64::from(color.blue()),
+    );
+
+    // Free is the whole track; cache and used are laid over it left to right.
+    cr.set_source_rgba(r, g, b, MEM_FREE_ALPHA);
+    cr.rectangle(0.0, 0.0, w, h);
+    let _ = cr.fill();
+
+    let used_w = w * parts.used.clamp(0.0, 1.0);
+    let cache_w = w * parts.cache.clamp(0.0, 1.0);
+    cr.set_source_rgba(r, g, b, MEM_CACHE_ALPHA);
+    cr.rectangle(used_w, 0.0, cache_w, h);
+    let _ = cr.fill();
+
+    cr.set_source_rgba(r, g, b, MEM_USED_ALPHA);
+    cr.rectangle(0.0, 0.0, used_w, h);
+    let _ = cr.fill();
+}
+
+/// Paint a legend swatch in the block's CSS colour at `alpha`.
+fn draw_swatch(area: &gtk::DrawingArea, cr: &cairo::Context, width: i32, height: i32, alpha: f64) {
+    let w = f64::from(width);
+    let h = f64::from(height);
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
+    let color = area.style_context().color();
+    cr.set_source_rgba(
+        f64::from(color.red()),
+        f64::from(color.green()),
+        f64::from(color.blue()),
+        alpha,
+    );
+    cr.rectangle(0.0, 0.0, w, h);
+    let _ = cr.fill();
 }
 
 /// One Storage row: mount point, a usage bar, `used / total` and the percent.
@@ -683,52 +863,6 @@ fn rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
     cr.close_path();
 }
 
-
-/// One bar gauge: a symbolic glyph over a small box that fills bottom-up to
-/// the current percentage (`frac`, shared with the model). The fill colour is
-/// read from CSS — the `.mango-resource-fill.{cpu,mem,gpu}` rules — the same
-/// way the sparklines pick up theirs.
-fn fill_icon(icon_name: &str, class: &str, frac: Rc<RefCell<f64>>) -> (gtk::Overlay, gtk::DrawingArea) {
-    let fill = gtk::DrawingArea::new();
-    fill.set_content_width(GAUGE);
-    fill.set_content_height(GAUGE);
-    fill.add_css_class("mango-resource-fill");
-    fill.add_css_class(class);
-    fill.set_draw_func(move |area, cr, w, h| {
-        let value = frac.borrow().clamp(0.0, 1.0);
-        let color = area.style_context().color();
-        let (r, g, b, a) = (
-            color.red() as f64,
-            color.green() as f64,
-            color.blue() as f64,
-            color.alpha() as f64,
-        );
-        // A dim track over the whole box…
-        cr.set_source_rgba(r, g, b, a * 0.14);
-        cr.rectangle(0.0, 0.0, w as f64, h as f64);
-        let _ = cr.fill();
-        // …and the filled portion rising from the bottom.
-        let filled = h as f64 * value;
-        cr.set_source_rgba(r, g, b, a * 0.85);
-        cr.rectangle(0.0, h as f64 - filled, w as f64, filled);
-        let _ = cr.fill();
-    });
-
-    // The glyph rides on top of the fill so it stays readable at any level.
-    let icon = gtk::Image::from_icon_name(icon_name);
-    icon.set_pixel_size(GAUGE);
-    icon.add_css_class("mango-resource-icon");
-    icon.set_halign(gtk::Align::Center);
-    icon.set_valign(gtk::Align::Center);
-
-    let root = gtk::Overlay::new();
-    root.set_child(Some(&fill));
-    root.add_overlay(&icon);
-    root.set_size_request(GAUGE, GAUGE);
-    (root, fill)
-}
-
-
 /// Append `value` to `history`, dropping the oldest sample past [`HISTORY`].
 fn push(history: &Rc<RefCell<Vec<f64>>>, value: f64) {
     let mut history = history.borrow_mut();
@@ -758,6 +892,15 @@ fn set_visible(widget: &impl IsA<gtk::Widget>, visible: bool) {
 fn redraw(area: &gtk::DrawingArea) {
     if area.is_mapped() {
         area.queue_draw();
+    }
+}
+
+/// `part / total` as a `0.0..=1.0` fraction, or `0.0` when `total` is zero.
+fn fraction(part: u64, total: u64) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        (part as f64 / total as f64).clamp(0.0, 1.0)
     }
 }
 
@@ -838,6 +981,7 @@ fn sample(cpu: f64, gpu: &mut Gpu, disks: &[DiskUsage]) -> ResourceSample {
     ResourceSample {
         cpu,
         mem_used: mem.total.saturating_sub(mem.available),
+        mem_free: mem.free,
         mem_total: mem.total,
         swap_used: mem.swap_total.saturating_sub(mem.swap_free),
         swap_total: mem.swap_total,
@@ -894,6 +1038,7 @@ fn cpu_fraction(prev: CpuTimes, cur: CpuTimes) -> f64 {
 struct Meminfo {
     total: u64,
     available: u64,
+    free: u64,
     swap_total: u64,
     swap_free: u64,
 }
@@ -904,6 +1049,7 @@ fn read_meminfo() -> Meminfo {
     let mut mem = Meminfo {
         total: 0,
         available: 0,
+        free: 0,
         swap_total: 0,
         swap_free: 0,
     };
@@ -923,6 +1069,7 @@ fn read_meminfo() -> Meminfo {
         match key {
             "MemTotal" => mem.total = bytes,
             "MemAvailable" => mem.available = bytes,
+            "MemFree" => mem.free = bytes,
             "SwapTotal" => mem.swap_total = bytes,
             "SwapFree" => mem.swap_free = bytes,
             _ => {}
@@ -1285,6 +1432,33 @@ mod tests {
     fn cpu_fraction_is_zero_without_elapsed_time() {
         let same = CpuTimes { total: 5, busy: 2 };
         assert_eq!(cpu_fraction(same, same), 0.0);
+    }
+
+    #[test]
+    fn memory_splits_into_used_cache_and_free() {
+        // 4 GiB held by apps, 2 GiB completely free, so the remaining 4 GiB is
+        // reclaimable cache. `mem_used` is `total - available`, so available is
+        // implied to be 6 GiB and cache = available - free = 4 GiB.
+        let sample = ResourceSample {
+            mem_used: 4,
+            mem_free: 2,
+            mem_total: 10,
+            ..ResourceSample::default()
+        };
+        assert_eq!(sample.mem_cache(), 4);
+        assert!((sample.mem_fraction() - 0.4).abs() < 1e-9);
+        assert!((sample.mem_cache_fraction() - 0.4).abs() < 1e-9);
+        assert!((sample.mem_free_fraction() - 0.2).abs() < 1e-9);
+    }
+
+    #[test]
+    fn memory_fractions_survive_a_zero_total() {
+        // A missing `/proc/meminfo` leaves everything at zero: no NaN, no panic.
+        let sample = ResourceSample::default();
+        assert_eq!(sample.mem_cache(), 0);
+        assert_eq!(sample.mem_fraction(), 0.0);
+        assert_eq!(sample.mem_cache_fraction(), 0.0);
+        assert_eq!(sample.mem_free_fraction(), 0.0);
     }
 
     #[test]

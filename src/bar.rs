@@ -9,7 +9,7 @@
 //! [adi1090x/polybar-themes](https://github.com/adi1090x/polybar-themes). The
 //! clusters (launcher buttons, tags, clock, tray, system indicators, monitor
 //! name) are built here imperatively, each wrapped the same way as the old
-//! fixed bar, then distributed into the CentreBox slots the panel asked for,
+//! fixed bar, then distributed into the `Start` / `Center` / `End` slots,
 //! with optional [`Sep`] separators between them. The `panel-<id>` class on
 //! the window lets each panel's CSS restyle everything (pill vs flat blocks,
 //! height, radius, palette).
@@ -35,8 +35,6 @@ use crate::widgets::wifi::WifiModel;
 
 /// Everything a bar needs to exist.
 pub struct BarInit {
-    /// Monitor connector name, e.g. `DP-1`.
-    pub name: String,
     /// The GDK monitor this bar is drawn on.
     pub monitor: gdk::Monitor,
     /// The theme id active at launch, so the popover checkmark is right.
@@ -152,11 +150,13 @@ impl SimpleComponent for BarModel {
         root.set_decorated(false);
 
         // The launcher, wallpaper carousel and panel picker all live in the
-        // shell, so the bar just reports their clicks.
+        // shell, so the bar just reports their clicks. The launcher wears the
+        // Arch mark with no chip behind it, so the corner of the bar reads as
+        // a bare logo instead of an app-grid glyph on a box.
         let launcher_button = gtk::Button::new();
-        launcher_button.set_css_classes(&["mango-icon-button"]);
+        launcher_button.set_css_classes(&["mango-launcher-button"]);
         launcher_button.set_tooltip_text(Some("Applications"));
-        launcher_button.set_child(Some(&gtk::Image::from_icon_name("view-app-grid-symbolic")));
+        launcher_button.set_child(Some(&arch_logo()));
         let click_sender = sender.clone();
         launcher_button.connect_clicked(move |_| {
             let _ = click_sender.output(BarOutput::ToggleLauncher);
@@ -181,6 +181,19 @@ impl SimpleComponent for BarModel {
         let overview_sender = sender.clone();
         overview_button.connect_clicked(move |_| {
             let _ = overview_sender.output(BarOutput::ToggleOverview);
+        });
+
+        // The keyboard-shortcut cheat-sheet the shell builds from the keybinds
+        // it knows about.
+        let shortcuts_button = gtk::Button::new();
+        shortcuts_button.set_css_classes(&["mango-icon-button"]);
+        shortcuts_button.set_tooltip_text(Some("Keyboard shortcuts"));
+        shortcuts_button.set_child(Some(&gtk::Image::from_icon_name(
+            "preferences-desktop-keyboard-shortcuts-symbolic",
+        )));
+        let shortcuts_sender = sender.clone();
+        shortcuts_button.connect_clicked(move |_| {
+            let _ = shortcuts_sender.output(BarOutput::ToggleShortcuts);
         });
 
         let tags = TagsModel::builder()
@@ -226,6 +239,7 @@ impl SimpleComponent for BarModel {
         left.append(theme_button.widget());
         left.append(&panels_button);
         left.append(&overview_button);
+        left.append(&shortcuts_button);
         left.append(music.widget());
         left.append(visualizer.widget());
 
@@ -325,6 +339,25 @@ fn horizontal_cluster(classes: &[&str], spacing: i32, halign: gtk::Align) -> gtk
     cluster.set_halign(halign);
     cluster.set_valign(gtk::Align::Center);
     cluster
+}
+
+/// Edge of the launcher's Arch mark, in pixels.
+const ARCH_LOGO_SIZE: i32 = 18;
+
+/// The Arch Linux mark for the launcher button.
+///
+/// The image is embedded under `assets/` rather than read from
+/// `/usr/share/pixmaps`, so the launcher looks the same on any host and does
+/// not depend on the distro's artwork package being installed.
+fn arch_logo() -> gtk::Image {
+    const PNG: &[u8] = include_bytes!("../assets/archlinux-logo.png");
+    let image = match gtk::gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(PNG)) {
+        Ok(pixbuf) => gtk::Image::from_pixbuf(Some(&pixbuf)),
+        // A damaged asset must not take the whole bar down.
+        Err(_) => gtk::Image::from_icon_name("view-app-grid-symbolic"),
+    };
+    image.set_pixel_size(ARCH_LOGO_SIZE);
+    image
 }
 
 /// Chain `members` into one slot box with 6px spacing and `panel.sep`

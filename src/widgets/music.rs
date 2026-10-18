@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::rc::Rc;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gtk::cairo;
 use gtk::gdk_pixbuf::{InterpType, Pixbuf};
@@ -64,9 +64,17 @@ const MAX_ART_BYTES: usize = 16 * 1024 * 1024;
 
 /// The seek slider runs on this many steps (`fraction = value / SEEK_RANGE`).
 const SEEK_RANGE: f64 = 1000.0;
+
 /// How long after the last slider movement a seek is committed, so a drag
 /// sends one call instead of one per pixel.
 const SEEK_DEBOUNCE: Duration = Duration::from_millis(180);
+
+/// How close the player's reported position must be to a just-issued seek
+/// target (as a fraction of the track) for the seek to count as confirmed.
+const SEEK_TOLERANCE: f64 = 0.02;
+/// While playing, stop waiting for a seek to be confirmed after this long and
+/// trust the player's position again.
+const SEEK_CONFIRM: Duration = Duration::from_millis(2500);
 
 /// Cover thumbnail in the bar.
 const BAR_COVER: i32 = 22;
@@ -234,6 +242,11 @@ pub struct MusicModel {
     /// True while the user is scrubbing the seek slider; poll updates then
     /// leave the handle alone instead of fighting the drag.
     scrub: Rc<Cell<bool>>,
+    /// The fraction the user last seeked to, and when, while the player has
+    /// not confirmed it. Some players (Firefox while paused) report a stale or
+    /// zero position for a moment after a seek; this keeps the handle where the
+    /// user put it until the player agrees.
+    pending_seek: Rc<Cell<Option<(f64, Instant)>>>,
 
     popover: gtk::Popover,
 
@@ -400,6 +413,7 @@ impl SimpleComponent for MusicModel {
 
         let syncing = Rc::new(Cell::new(false));
         let scrub = Rc::new(Cell::new(false));
+        let pending_seek: Rc<Cell<Option<(f64, Instant)>>> = Rc::new(Cell::new(None));
 
         let model = MusicModel {
             track: None,
@@ -409,6 +423,7 @@ impl SimpleComponent for MusicModel {
             cover_token: 0,
             syncing: syncing.clone(),
             scrub: scrub.clone(),
+            pending_seek: pending_seek.clone(),
             popover: popover.clone(),
             bar_cover,
             bar_label,
@@ -456,6 +471,7 @@ impl SimpleComponent for MusicModel {
             let syncing = syncing.clone();
             let scrub = scrub.clone();
             let scrub_timer = scrub_timer.clone();
+            let pending_seek = pending_seek.clone();
             let commands = commands.clone();
             move |scale| {
                 if syncing.get() {
@@ -468,8 +484,18 @@ impl SimpleComponent for MusicModel {
                 }
                 let commands = commands.clone();
                 let scrub = scrub.clone();
+                let timer_slot = scrub_timer.clone();
+                let pending_seek = pending_seek.clone();
                 let timer = glib::timeout_add_local_once(SEEK_DEBOUNCE, move || {
+                    // The one-shot has fired, so glib has destroyed its source:
+                    // drop the id here, or the next change calls `remove` on a
+                    // dead source and glib panics.
+                    timer_slot.borrow_mut().take();
                     scrub.set(false);
+                    // Remember where the user dropped the handle so a player
+                    // that reports a stale/zero position right after the seek
+                    // does not yank it back before it catches up.
+                    pending_seek.set(Some((fraction, Instant::now())));
                     let _ = commands.send(Command::Seek(fraction));
                 });
                 *scrub_timer.borrow_mut() = Some(timer);
@@ -499,6 +525,15 @@ impl SimpleComponent for MusicModel {
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         match msg {
             MusicInput::Update(track) => {
+                // A different track (or none) invalidates any pending seek.
+                let same = match (&self.track, &track) {
+                    (Some(old), Some(new)) => old.bus == new.bus && old.title == new.title,
+                    (None, None) => true,
+                    _ => false,
+                };
+                if !same {
+                    self.pending_seek.set(None);
+                }
                 self.track = track;
                 self.sync_cover();
                 // A player that went away should not leave its popover open.
@@ -585,24 +620,45 @@ impl MusicModel {
         self.prev_button.set_sensitive(track.can_prev);
         self.next_button.set_sensitive(track.can_next);
 
-        // Progress. The slider is only moved when the user is not scrubbing it.
+        // Progress. The slider is only moved when the user is not scrubbing it;
+        // a just-issued seek also overrides the player until it catches up.
         let length = track.length.filter(|length| *length > 0);
-        let fraction = length
-            .map(|length| track.position as f64 / length as f64)
+        let polled = length
+            .map(|length| (track.position as f64 / length as f64).clamp(0.0, 1.0))
             .unwrap_or(0.0);
+        let target = self.pending_fraction(polled, track.playing);
+        let shown = target.unwrap_or(polled);
         if !self.scrub.get() {
             self.syncing.set(true);
-            self.seek.set_value(fraction.clamp(0.0, 1.0) * SEEK_RANGE);
+            self.seek.set_value(shown * SEEK_RANGE);
             self.syncing.set(false);
         }
         self.seek.set_sensitive(track.can_seek && length.is_some());
 
-        self.pos_label.set_text(&format_duration(track.position));
+        let shown_position = match (target, length) {
+            (Some(fraction), Some(length)) => (fraction * length as f64).round() as i64,
+            _ => track.position,
+        };
+        self.pos_label.set_text(&format_duration(shown_position));
         self.len_label.set_text(
             &length
                 .map(format_duration)
                 .unwrap_or_else(|| "--:--".to_string()),
         );
+    }
+
+    /// The fraction the seek bar should show, given the player's reported
+    /// `polled` fraction. Returns the user's seek target as long as the player
+    /// has not caught up to it: some players (Firefox while paused) report a
+    /// stale or zero position for a while after a seek. While playing, that
+    /// patience is capped so a failed seek still falls back to the player.
+    fn pending_fraction(&self, polled: f64, playing: bool) -> Option<f64> {
+        let (target, at) = self.pending_seek.get()?;
+        if playing && ((polled - target).abs() <= SEEK_TOLERANCE || at.elapsed() >= SEEK_CONFIRM) {
+            self.pending_seek.set(None);
+            return None;
+        }
+        Some(target)
     }
 }
 
@@ -810,8 +866,14 @@ fn run_command(conn: &Connection, track: &Track, command: &Command) {
             let Some(length) = track.length.filter(|length| *length > 0) else {
                 return;
             };
+            // `track.position` is up to a poll interval stale, and the offset
+            // is measured from where the player is *now*, so read the live
+            // playhead; fall back to the snapshot if the player won't say.
+            let position = player
+                .get_property::<i64>("Position")
+                .unwrap_or(track.position);
             let target = (fraction.clamp(0.0, 1.0) * length as f64).round() as i64;
-            let offset = target - track.position;
+            let offset = target - position;
             let _ = player.call::<_, _, ()>("Seek", &(offset,));
         }
     }

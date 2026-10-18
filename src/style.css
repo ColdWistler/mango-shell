@@ -147,6 +147,22 @@ window.mango-bar button.mango-icon-button:active {
     background-color: alpha(@on_surface, 0.16);
 }
 
+/* The app launcher: the Arch mark with no chip behind it. */
+window.mango-bar button.mango-launcher-button {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    border: none;
+    box-shadow: none;
+    -gtk-icon-size: 18px;
+}
+
+window.mango-bar button.mango-launcher-button:hover {
+    background: none;
+}
+
 /* --- Panel separators -------------------------------------------------
  * Drawn between widget clusters by the panel layouts (see src/panel.rs).
  * Panels can also restyle these through their panel-<id> class. */
@@ -1008,17 +1024,7 @@ button.mango-power-action.danger:hover {
 
 /* --- System resources (CPU / memory / GPU / storage) ------------------- */
 
-/* The bar gauges: `resources.rs` paints a box that fills bottom-up to the
- * current percentage behind a symbolic glyph, and reads the colour from here.
- * The tones stay inside the Material 3 roles every panel and theme defines. */
-.mango-resource-fill {
-    color: @primary;
-}
-
-.mango-resource-fill.cpu { color: @primary; }
-.mango-resource-fill.mem { color: @on_primary_container; }
-.mango-resource-fill.gpu { color: @on_secondary_container; }
-
+/* The tones stay inside the Material 3 roles every panel and theme defines. */
 .mango-resource-value {
     font-size: 13px;
     font-weight: 600;
@@ -1066,6 +1072,28 @@ button.mango-power-action.danger:hover {
     color: @on_surface_variant;
     font-size: 12px;
     padding: 0 2px;
+}
+
+/* The Memory block's used / cache / free breakdown. The bar and the legend
+ * swatches are painted by `resources.rs`, which reads this base colour and
+ * applies its own alphas (used solid, cache mid, free faint). */
+.mango-resource-mem-bar {
+    color: @on_primary_container;
+    min-height: 10px;
+}
+
+.mango-resource-swatch {
+    color: @on_primary_container;
+}
+
+.mango-resource-legend-value {
+    color: @on_surface_variant;
+    font-size: 12px;
+}
+
+.mango-resource-legend-value.used {
+    color: @on_surface;
+    font-weight: 600;
 }
 
 /* One filesystem row: mount, usage bar, used/total, percent. */

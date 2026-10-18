@@ -16,7 +16,9 @@
 //!
 //! [wallpaperCarousel]: https://github.com/motor-dev/wallpaperCarousel
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gtk::gdk;
@@ -172,7 +174,7 @@ fn seed() -> u64 {
 /// Pick the next transition, occasionally a fade through black.
 fn next_effect() -> Effect {
     let seed = seed();
-    if seed % THROUGH_BLACK_EVERY == 0 {
+    if seed.is_multiple_of(THROUGH_BLACK_EVERY) {
         return Effect::ThroughBlack;
     }
     Effect::Stack(STACK_EFFECTS[(seed >> 8) as usize % STACK_EFFECTS.len()])
@@ -207,8 +209,9 @@ pub struct WallpaperModel {
     black: gtk::DrawingArea,
     use_a: bool,
     /// The pending second half of a fade-through-black, dropped when another
-    /// change interrupts it.
-    pending: Option<gtk::glib::SourceId>,
+    /// change interrupts it. Shared so the timeout can clear its own id once
+    /// it has fired (glib panics on removing a source that is already gone).
+    pending: Rc<RefCell<Option<gtk::glib::SourceId>>>,
 }
 
 #[relm4::component(pub)]
@@ -286,7 +289,7 @@ impl SimpleComponent for WallpaperModel {
             picture_b: picture_b.clone(),
             black,
             use_a: true,
-            pending: None,
+            pending: Rc::new(RefCell::new(None)),
         };
 
         let widgets = view_output!();
@@ -305,7 +308,7 @@ impl SimpleComponent for WallpaperModel {
     /// Cancel a half-finished transition so its timeout is not left dangling
     /// when the surface (and its monitor) goes away.
     fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
-        if let Some(pending) = self.pending.take() {
+        if let Some(pending) = self.pending.borrow_mut().take() {
             pending.remove();
         }
     }
@@ -339,7 +342,7 @@ fn apply(model: &mut WallpaperModel, path: Option<&Path>, animate: bool) {
     model.window.set_visible(true);
 
     // Cancel any half-finished fade-through-black.
-    if let Some(pending) = model.pending.take() {
+    if let Some(pending) = model.pending.borrow_mut().take() {
         pending.remove();
     }
 
@@ -363,13 +366,19 @@ fn apply(model: &mut WallpaperModel, path: Option<&Path>, animate: bool) {
             model.stack.set_visible_child(&model.black);
 
             let stack = model.stack.clone();
-            model.pending = Some(gtk::glib::timeout_add_local_once(
+            let pending = model.pending.clone();
+            let timer = gtk::glib::timeout_add_local_once(
                 Duration::from_millis(u64::from(half)),
                 move || {
+                    // This one-shot has fired and glib has destroyed its
+                    // source: drop the id so a later change never removes a
+                    // dead source (glib panics on that).
+                    pending.borrow_mut().take();
                     stack.set_transition_type(gtk::StackTransitionType::Crossfade);
                     stack.set_visible_child(&target);
                 },
-            ));
+            );
+            *model.pending.borrow_mut() = Some(timer);
         }
     }
 }

@@ -298,8 +298,8 @@ floats over the window you are working in. It enumerates every visible
 highlighted one on Enter or click. The card follows HyDE's launchers: the
 current wallpaper on top, a pill search field and accent-highlighted rows.
 
-Open it either with the round **launcher button** at the left end of the bar,
-or from a keybind in `~/.config/mango/config.conf`:
+Open it either with the Arch-logo **launcher button** at the left end of the
+bar, or from a keybind in `~/.config/mango/config.conf`:
 
 ```ini
 bind=SUPER,d,spawn,pkill -SIGUSR1 mango-shell
@@ -393,6 +393,14 @@ open. Because Mango's IPC exposes no surface capture (and a GTK client cannot
 screencopy the windows of tags that are not visible), the tiles are
 **schematic** — icon, title and geometry — rather than live thumbnails. Mango's
 own `ALT,Tab,togglejump` overview is unaffected; this one is complementary.
+
+### Keyboard shortcuts
+
+The **shortcuts button** in the bar's left cluster (right of the overview
+button) opens a read-only cheat-sheet of the compositor's `bind=` lines. It
+re-parses `~/.config/mango/config.conf` (or `$MANGO_CONFIG`) every time it
+opens, keeps the `# comment` headings as section titles, and has a search box
+to filter by key or action — so edits to the config show up without a restart.
 
 ### Status indicators & system tray
 

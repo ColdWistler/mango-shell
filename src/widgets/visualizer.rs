@@ -165,6 +165,10 @@ impl SimpleComponent for VisualizerModel {
                 self.retry = Some(schedule_retry(&sender));
             }
             VisualizerInput::Retry => {
+                // The retry timer fired to deliver this message, so its source
+                // is already gone: drop the id before maybe arming a new one,
+                // or `shutdown` later removes a dead source and glib panics.
+                self.retry = None;
                 if self.start(&sender) {
                     self.ended = false;
                 } else {

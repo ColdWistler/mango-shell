@@ -1253,22 +1253,40 @@ fn paint(cr: &cairo::Context, width: i32, height: i32, scene: &Scene) {
         if alpha <= 0.005 {
             continue;
         }
-        paint_card(cr, width / 2.0 + d * CARD_WIDTH, height / 2.0, sc, alpha, surface, d, scene);
+        paint_card(
+            cr,
+            CardLayout {
+                cx: width / 2.0 + d * CARD_WIDTH,
+                cy: height / 2.0,
+                scale: sc,
+                alpha,
+            },
+            surface,
+            d,
+            scene,
+        );
     }
+}
+
+/// Where one card sits on the canvas: its centre, its depth scale and its
+/// opacity.
+struct CardLayout {
+    cx: f64,
+    cy: f64,
+    scale: f64,
+    alpha: f64,
 }
 
 /// One card: a sheared frame with the image inside, re-fitted after clipping
 /// so the picture itself stays upright.
 fn paint_card(
     cr: &cairo::Context,
-    cx: f64,
-    cy: f64,
-    scale: f64,
-    alpha: f64,
+    layout: CardLayout,
     surface: &cairo::ImageSurface,
     d: f64,
     scene: &Scene,
 ) {
+    let CardLayout { cx, cy, scale, alpha } = layout;
     let hw = CARD_WIDTH * scale / 2.0;
     let hh = CARD_HEIGHT * scale / 2.0;
 

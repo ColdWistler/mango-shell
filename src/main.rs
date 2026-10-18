@@ -267,7 +267,6 @@ impl SimpleComponent for Shell {
                 };
                 let bar = BarModel::builder()
                     .launch(BarInit {
-                        name: name.clone(),
                         monitor: monitor.clone(),
                         theme: self.theme.id.to_string(),
                         panel: self.panel,

@@ -14,9 +14,8 @@
 //!   `panel-<id>` class the bar puts on its root window;
 //! * the bar's height and layer-shell margins (a floating bar insets itself
 //!   from the screen edges; a full-width one does not);
-//! * the [`Slot`] each cluster of widgets is placed in, mirroring polybar's
-//!   `modules-left` / `modules-center` / `modules-right`;
-//! * an optional [`Sep`] separator drawn *between* clusters.
+//! * an optional [`Sep`] separator drawn *between* clusters (the [`Slot`] a
+//!   cluster lands in is decided by the bar, not the panel).
 //!
 //! [`PanelPickerModel`] is the fly-out gallery, opened from the bar's panel
 //! button, that lets you flip between them live. The choice is written to
@@ -73,16 +72,6 @@ pub struct Panel {
     /// Layer-shell left/right margin. `0` keeps the bar full width; anything
     /// larger floats it in from the screen edges.
     pub margin_side: i32,
-    /// Which slot the launcher/wallpaper/theme/panel buttons live in.
-    pub apps: Slot,
-    /// Which slot the workspace (tag) pills live in.
-    pub tags: Slot,
-    /// Which slot the clock lives in.
-    pub clock: Slot,
-    /// Which slot the system tray lives in.
-    pub tray: Slot,
-    /// Which slot the Wi-Fi/volume/brightness readouts live in.
-    pub system: Slot,
     /// Separator style drawn between clusters.
     pub sep: Sep,
     /// Corner radius used when drawing the picker preview.
@@ -111,11 +100,6 @@ pub const PANELS: &[Panel] = &[
         height: 40,
         margin_top: 0,
         margin_side: 0,
-        apps: Slot::Start,
-        tags: Slot::Start,
-        clock: Slot::Center,
-        tray: Slot::End,
-        system: Slot::End,
         sep: Sep::None,
         preview_radius: 0.0,
         preview_floating: false,
@@ -129,11 +113,6 @@ pub const PANELS: &[Panel] = &[
         height: 40,
         margin_top: 8,
         margin_side: 16,
-        apps: Slot::Start,
-        tags: Slot::Start,
-        clock: Slot::End,
-        tray: Slot::End,
-        system: Slot::End,
         sep: Sep::None,
         preview_radius: 0.0,
         preview_floating: true,
@@ -147,11 +126,6 @@ pub const PANELS: &[Panel] = &[
         height: 36,
         margin_top: 0,
         margin_side: 0,
-        apps: Slot::Start,
-        tags: Slot::Start,
-        clock: Slot::End,
-        tray: Slot::End,
-        system: Slot::End,
         sep: Sep::Line,
         preview_radius: 0.0,
         preview_floating: false,
@@ -165,11 +139,6 @@ pub const PANELS: &[Panel] = &[
         height: 30,
         margin_top: 0,
         margin_side: 0,
-        apps: Slot::Start,
-        tags: Slot::Start,
-        clock: Slot::End,
-        tray: Slot::End,
-        system: Slot::End,
         sep: Sep::Block,
         preview_radius: 0.0,
         preview_floating: false,
@@ -183,11 +152,6 @@ pub const PANELS: &[Panel] = &[
         height: 34,
         margin_top: 0,
         margin_side: 0,
-        apps: Slot::Start,
-        tags: Slot::Start,
-        clock: Slot::End,
-        tray: Slot::End,
-        system: Slot::End,
         sep: Sep::Block,
         preview_radius: 0.0,
         preview_floating: false,
@@ -201,11 +165,6 @@ pub const PANELS: &[Panel] = &[
         height: 40,
         margin_top: 6,
         margin_side: 24,
-        apps: Slot::Start,
-        tags: Slot::Start,
-        clock: Slot::Center,
-        tray: Slot::End,
-        system: Slot::End,
         sep: Sep::None,
         preview_radius: 0.0,
         preview_floating: true,
@@ -219,11 +178,6 @@ pub const PANELS: &[Panel] = &[
         height: 26,
         margin_top: 0,
         margin_side: 0,
-        apps: Slot::Start,
-        tags: Slot::Center,
-        clock: Slot::End,
-        tray: Slot::End,
-        system: Slot::End,
         sep: Sep::Line,
         preview_radius: 0.0,
         preview_floating: false,
