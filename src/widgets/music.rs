@@ -112,7 +112,7 @@ pub struct Track {
 impl Track {
     /// The one-line label shown in the bar: `artist — title`, with graceful
     /// fallbacks when a player leaves a field empty.
-    fn bar_text(&self) -> String {
+    pub(crate) fn bar_text(&self) -> String {
         match (self.artist.trim(), self.title.trim()) {
             ("", "") => self.player.clone(),
             ("", title) => title.to_string(),
@@ -144,9 +144,10 @@ pub enum MusicInput {
     CoverFailed { token: u64 },
 }
 
-/// Transport commands sent from the UI to the poller thread.
-#[derive(Debug)]
-enum Command {
+/// Transport commands sent from the UI to the poller thread. The dashboard's
+/// now-playing card shares these, so `pub(crate)` on the enum.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Command {
     PlayPause,
     Next,
     Previous,
@@ -690,6 +691,17 @@ fn format_duration(micros: i64) -> String {
 /// actually changed. Transport commands from the UI are serviced between
 /// ticks; the thread exits as soon as the widget drops its sender.
 fn spawn_poller(sender: ComponentSender<MusicModel>) -> Sender<Command> {
+    spawn_track_poller(move |track| sender.input(MusicInput::Update(track)))
+}
+
+/// The poller behind [`spawn_poller`], with the UI calls handed to `sink` so
+/// other views can run it against their own input enum — the dashboard's
+/// now-playing card sends its snapshots this way. The returned channel carries
+/// transport commands; the thread services them against whatever it last read,
+/// then re-reads the bus. The thread exits as soon as the caller drops `tx`.
+pub(crate) fn spawn_track_poller(
+    sink: impl Fn(Option<Track>) + Send + 'static,
+) -> Sender<Command> {
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
@@ -724,7 +736,7 @@ fn spawn_poller(sender: ComponentSender<MusicModel>) -> Sender<Command> {
                 Ok(current) => current,
                 Err(_) => {
                     if last.is_some() {
-                        sender.input(MusicInput::Update(None));
+                        sink(None);
                         last = None;
                     }
                     std::thread::sleep(RETRY);
@@ -737,7 +749,7 @@ fn spawn_poller(sender: ComponentSender<MusicModel>) -> Sender<Command> {
             };
 
             if current != last {
-                sender.input(MusicInput::Update(current.clone()));
+                sink(current.clone());
                 last = current;
             }
         }

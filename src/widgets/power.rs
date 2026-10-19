@@ -44,7 +44,7 @@ impl Charge {
         }
     }
 
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Charging => "Charging",
             Self::Discharging => "Discharging",
@@ -55,7 +55,7 @@ impl Charge {
     }
 
     /// True while power is flowing in (or the pack is topped up).
-    fn charging(self) -> bool {
+    pub(crate) fn charging(self) -> bool {
         matches!(self, Self::Charging | Self::Full)
     }
 }
@@ -73,7 +73,7 @@ pub struct BatteryState {
 impl BatteryState {
     /// The icon shown on the bar and atop the popover. All names come from the
     /// Adwaita set, so they render with the default icon theme.
-    fn icon_name(self) -> &'static str {
+    pub(crate) fn icon_name(self) -> &'static str {
         if !self.present {
             return "system-shutdown-symbolic";
         }
@@ -104,11 +104,11 @@ impl BatteryState {
         }
     }
 
-    fn label(self) -> String {
+    pub(crate) fn label(self) -> String {
         format!("{}%", self.percent)
     }
 
-    fn status(self) -> &'static str {
+    pub(crate) fn status(self) -> &'static str {
         if self.present {
             self.charge.label()
         } else {
@@ -136,7 +136,8 @@ pub enum PowerAction {
 }
 
 impl PowerAction {
-    const ALL: [Self; 5] = [
+    /// Every action, in the order the popover and the dashboard show them.
+    pub(crate) const ALL: [Self; 5] = [
         Self::Lock,
         Self::LogOut,
         Self::Suspend,
@@ -144,7 +145,7 @@ impl PowerAction {
         Self::Shutdown,
     ];
 
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Lock => "Lock",
             Self::LogOut => "Log out",
@@ -155,7 +156,7 @@ impl PowerAction {
     }
 
     /// All from the Adwaita set, so they render with the default icon theme.
-    fn icon(self) -> &'static str {
+    pub(crate) fn icon(self) -> &'static str {
         match self {
             Self::Lock => "system-lock-screen-symbolic",
             Self::LogOut => "system-log-out-symbolic",
@@ -166,7 +167,7 @@ impl PowerAction {
     }
 
     /// Destructive actions are tinted with the error colour.
-    fn danger(self) -> bool {
+    pub(crate) fn danger(self) -> bool {
         matches!(self, Self::Shutdown)
     }
 }
@@ -404,7 +405,7 @@ fn spawn_poller(sender: ComponentSender<PowerModel>) -> Sender<Command> {
 }
 
 /// Read the first battery found under `/sys/class/power_supply`.
-fn read_battery() -> BatteryState {
+pub(crate) fn read_battery() -> BatteryState {
     let Some(dir) = find_battery() else {
         return BatteryState::default();
     };
@@ -469,7 +470,10 @@ const LOCKERS: &[&str] = &[
     "swaylock-effects",
 ];
 
-fn run_action(action: PowerAction) {
+/// Run one session action (lock, log out, suspend, reboot, shut down).
+/// `pub(crate)` for the dashboard's power card; each helper spawns and never
+/// waits, so calling it from the UI thread is safe.
+pub(crate) fn run_action(action: PowerAction) {
     match action {
         PowerAction::Lock => lock(),
         PowerAction::LogOut => log_out(),

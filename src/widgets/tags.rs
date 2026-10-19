@@ -138,7 +138,10 @@ fn style(button: &gtk::Button, tag: &TagView) {
 /// The label shown for a 1-based tag index, written with Japanese kanji
 /// numerals: 1 → 一, 9 → 九, 10 → 十, 11 → 十一, 21 → 二十一, 100 → 百, and so
 /// on. Falls back to arabic digits past the kanji's useful range (10 000+).
-fn tag_label(index: u32) -> String {
+///
+/// `pub(crate)` so the dashboard's workspaces card draws the same glyphs the
+/// bar does.
+pub(crate) fn tag_label(index: u32) -> String {
     const DIGITS: [&str; 9] = ["一", "二", "三", "四", "五", "六", "七", "八", "九"];
     if index == 0 {
         return "0".to_string();

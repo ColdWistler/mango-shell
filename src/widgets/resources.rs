@@ -896,7 +896,9 @@ fn redraw(area: &gtk::DrawingArea) {
 }
 
 /// `part / total` as a `0.0..=1.0` fraction, or `0.0` when `total` is zero.
-fn fraction(part: u64, total: u64) -> f64 {
+/// `pub(crate)` for the dashboard's resource card, which renders the same
+/// figures its own sampler produces.
+pub(crate) fn fraction(part: u64, total: u64) -> f64 {
     if total == 0 {
         0.0
     } else {
@@ -905,7 +907,8 @@ fn fraction(part: u64, total: u64) -> f64 {
 }
 
 /// `1_536` bytes as `1.5 GiB`, or `512 MiB` below a gibibyte.
-fn human(bytes: u64) -> String {
+/// `pub(crate)` so the dashboard formats byte counts the same way.
+pub(crate) fn human(bytes: u64) -> String {
     const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
     const MIB: f64 = 1024.0 * 1024.0;
     let value = bytes as f64;
@@ -992,6 +995,50 @@ fn sample(cpu: f64, gpu: &mut Gpu, disks: &[DiskUsage]) -> ResourceSample {
         load: read_load(),
         gpu: gpu.sample(),
         disks: disks.to_vec(),
+    }
+}
+
+/// A stand-alone sampler for views outside the bar's popover — the dashboard's
+/// resource card drives its own cadence with this. It wraps the same readers
+/// the popover's poller uses (CPU deltas, meminfo, disks, GPU), so both show
+/// identical numbers.
+///
+/// Build it **on the worker thread** that will call [`Sampler::next`]: the
+/// constructor sleeps briefly to establish a CPU baseline, so the first sample
+/// is a real percentage rather than a placeholder zero.
+pub struct Sampler {
+    prev: CpuTimes,
+    gpu: Gpu,
+    disks: Vec<DiskUsage>,
+    tick: u32,
+}
+
+impl Sampler {
+    pub fn new() -> Self {
+        let prev = read_cpu_times();
+        std::thread::sleep(Duration::from_millis(250));
+        let mut sampler = Sampler {
+            prev,
+            gpu: Gpu::start(),
+            disks: read_disks(),
+            tick: 0,
+        };
+        sampler.prev = read_cpu_times();
+        sampler
+    }
+
+    /// Read every metric once. The CPU figure is the busy share over the time
+    /// since the previous call, so a slow cadence reports a real average
+    /// across the gap instead of a spike.
+    pub fn next(&mut self) -> ResourceSample {
+        let cur = read_cpu_times();
+        let cpu = cpu_fraction(self.prev, cur);
+        self.prev = cur;
+        if self.tick.is_multiple_of(DISK_EVERY) {
+            self.disks = read_disks();
+        }
+        self.tick = self.tick.wrapping_add(1);
+        sample(cpu, &mut self.gpu, &self.disks)
     }
 }
 

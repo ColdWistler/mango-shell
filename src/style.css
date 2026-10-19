@@ -528,13 +528,14 @@ window.mango-flyout row:selected label {
 }
 
 /* --- Dashboard ---------------------------------------------------------
- * The front door behind the bar's Arch mark: a small card holding the
- * Applications tile (hands off to the launcher above) and the Settings tile
- * (the settings app this branch grows). The tiles are big, outlined blocks so
- * they read as doors rather than list rows. */
+ * The front door behind the bar's Arch mark: a wide card, big enough to be a
+ * small dashboard rather than a menu. The top row holds the two doors —
+ * Applications (hands off to the launcher) and Settings (the seam the settings
+ * app grows into) — and below them a grid of info cards: weather, power, now
+ * playing, resources, workspaces and recently launched apps. */
 
 .mango-dashboard-panel {
-    min-width: 340px;
+    min-width: 680px;
 }
 
 .mango-dashboard-title {
@@ -543,13 +544,29 @@ window.mango-flyout row:selected label {
     font-weight: 600;
 }
 
+.mango-dashboard-greeting {
+    color: @on_surface_variant;
+    font-size: 13px;
+}
+
+.mango-dashboard-clock {
+    color: @on_surface;
+    font-size: 30px;
+    font-weight: 600;
+}
+
+.mango-dashboard-date {
+    color: @on_surface_variant;
+    font-size: 13px;
+}
+
 window.mango-flyout button.mango-dashboard-tile {
     background-color: alpha(@on_surface, 0.06);
     border: 1px solid @outline_variant;
     border-radius: 0;
     box-shadow: none;
     color: @on_surface;
-    padding: 20px 18px 16px;
+    padding: 14px 18px 12px;
     min-width: 150px;
     transition: background-color 150ms ease, border-color 150ms ease;
 }
@@ -567,6 +584,181 @@ window.mango-flyout button.mango-dashboard-tile:active {
 window.mango-flyout button.mango-dashboard-tile label {
     font-size: 14px;
     font-weight: 600;
+}
+
+/* One info card: an outlined block the grid drops into place. */
+.mango-card {
+    background-color: alpha(@on_surface, 0.05);
+    border: 1px solid @outline_variant;
+    padding: 14px;
+}
+
+.mango-card-title {
+    color: @on_surface_variant;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* The headline figure of a card: the clock-side number, a percentage, a
+ * temperature. */
+.mango-card-value {
+    color: @on_surface;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.mango-card-label {
+    color: @on_surface;
+    font-size: 13px;
+}
+
+/* The muted supporting line under most figures. */
+.mango-card-note {
+    color: @on_surface_variant;
+    font-size: 12px;
+}
+
+/* --- Resource card ----------------------------------------------------- */
+
+.mango-stat-name {
+    color: @on_surface_variant;
+    font-size: 12px;
+    min-width: 44px;
+}
+
+.mango-stat-value {
+    color: @on_surface;
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 40px;
+}
+
+window.mango-flyout progressbar {
+    background-color: alpha(@on_surface, 0.10);
+    border: none;
+    border-radius: 0;
+    min-height: 8px;
+}
+
+window.mango-flyout progressbar progress {
+    background-color: @primary;
+    border: none;
+    border-radius: 0;
+    min-height: 8px;
+}
+
+/* The same 90%-and-up warning tint the bar popover paints with. */
+window.mango-flyout progressbar.warning progress {
+    background-color: @error;
+}
+
+/* --- Power card -------------------------------------------------------- */
+
+window.mango-flyout button.mango-action-button {
+    background-color: alpha(@on_surface, 0.06);
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface;
+    padding: 8px;
+    min-width: 36px;
+    min-height: 36px;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+window.mango-flyout button.mango-action-button:hover {
+    background-color: alpha(@on_surface, 0.10);
+    border-color: @primary;
+}
+
+window.mango-flyout button.mango-action-button.danger {
+    color: @error;
+    border-color: alpha(@error, 0.45);
+}
+
+window.mango-flyout button.mango-action-button.danger:hover {
+    background-color: alpha(@error, 0.14);
+}
+
+/* --- Now-playing card -------------------------------------------------- */
+
+.mango-media-title {
+    color: @on_surface;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+window.mango-flyout button.mango-transport-button {
+    background-color: alpha(@on_surface, 0.06);
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface;
+    padding: 6px;
+    min-width: 32px;
+    min-height: 32px;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+window.mango-flyout button.mango-transport-button:hover {
+    background-color: alpha(@on_surface, 0.10);
+    border-color: @primary;
+}
+
+/* --- Workspaces card ---------------------------------------------------
+ * Tag chips drawn with the bar's kanji glyphs: a bare outline when empty, a
+ * dimmed fill when occupied, the accent fill when active. Clicking one
+ * switches tags, exactly like the bar's strip. */
+
+window.mango-flyout button.mango-chip {
+    background-color: transparent;
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface_variant;
+    padding: 4px 10px;
+    font-size: 13px;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+window.mango-flyout button.mango-chip:hover {
+    background-color: alpha(@on_surface, 0.08);
+}
+
+window.mango-flyout button.mango-chip.occupied {
+    color: @on_surface;
+    border-color: @outline;
+}
+
+window.mango-flyout button.mango-chip.active {
+    background-color: @primary;
+    border-color: @primary;
+    color: @on_primary;
+    font-weight: 600;
+}
+
+window.mango-flyout button.mango-chip.urgent {
+    color: @error;
+    border-color: @error;
+}
+
+/* --- Recent-apps row --------------------------------------------------- */
+
+window.mango-flyout button.mango-recent-button {
+    background-color: alpha(@on_surface, 0.06);
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface;
+    padding: 10px;
+    min-width: 50px;
+    min-height: 50px;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+window.mango-flyout button.mango-recent-button:hover {
+    background-color: alpha(@on_surface, 0.10);
+    border-color: @primary;
 }
 
 /* --- Wallpaper carousel ------------------------------------------------ */

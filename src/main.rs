@@ -347,6 +347,7 @@ impl SimpleComponent for Shell {
                     }
                     self.monitors = update;
                     self.push_overview_state();
+                    self.push_dashboard_state();
                 }
             }
 
@@ -354,6 +355,7 @@ impl SimpleComponent for Shell {
                 if self.has_mango {
                     self.clients = clients;
                     self.push_overview_state();
+                    self.push_dashboard_state();
                 }
             }
 
@@ -368,6 +370,13 @@ impl SimpleComponent for Shell {
 
             ShellInput::ToggleDashboard => {
                 self.launcher.emit(LauncherInput::Hide);
+                // Same reasoning as the overview below: the dashboard draws
+                // the shell's last pushed state, so re-read the client list
+                // before it opens rather than letting it come up stale.
+                if self.has_mango {
+                    mango::refresh_clients(sender.clone());
+                    self.push_dashboard_state();
+                }
                 self.dashboard.emit(DashboardInput::Toggle);
             }
 
@@ -487,6 +496,37 @@ impl Shell {
                 clients: self.clients.clone(),
             });
         }
+    }
+
+    /// Hand the dashboard's workspaces card the focused monitor's tag strip
+    /// and how many windows sit on its active tags.
+    fn push_dashboard_state(&self) {
+        if !self.has_mango {
+            return;
+        }
+        let Some((name, monitor)) = self.monitors.iter().find(|(_, monitor)| monitor.active) else {
+            return;
+        };
+
+        let active: Vec<u32> = monitor
+            .tags
+            .iter()
+            .filter(|tag| tag.active)
+            .map(|tag| tag.index)
+            .collect();
+        let windows = self
+            .clients
+            .iter()
+            .filter(|client| {
+                client.monitor == *name
+                    && (client.is_global || client.tags.iter().any(|tag| active.contains(tag)))
+            })
+            .count();
+
+        self.dashboard.emit(DashboardInput::SetState {
+            tags: monitor.tags.clone(),
+            windows,
+        });
     }
 }
 

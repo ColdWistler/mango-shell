@@ -316,11 +316,61 @@ impl LauncherModel {
         self.hide();
 
         let app = &self.apps[app_index];
-        if let Err(error) = app.launch(&[], None::<&gio::AppLaunchContext>) {
-            eprintln!(
+        match app.launch(&[], None::<&gio::AppLaunchContext>) {
+            // Remember it for the dashboard's recent-apps row.
+            Ok(()) => record_launch(app),
+            Err(error) => eprintln!(
                 "mango-shell: failed to launch {}: {error}",
                 app.display_name()
-            );
+            ),
         }
     }
+}
+
+/// Where recent launches are remembered for the dashboard's quick-launch row.
+///
+/// One line per launch, newest first:
+/// `<unix seconds>\t<desktop id>\t<display name>`.
+pub(crate) fn recent_path() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(std::path::Path::new(&home).join(".config/mango-shell/recent-apps"))
+}
+
+/// Append `app` to the recent-launches file (see [`recent_path`]), moving it
+/// to the front if it is already there.
+///
+/// Everything here is best-effort: a missing config directory, an unreadable
+/// file or a full disk must never turn a successful launch into an error.
+pub(crate) fn record_launch(app: &gio::AppInfo) {
+    // Without a desktop id there is nothing stable to key the entry on.
+    let Some(id) = app.id() else {
+        return;
+    };
+    let name = app.display_name().to_string();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or(0);
+
+    let Some(path) = recent_path() else {
+        return;
+    };
+    let Some(dir) = path.parent() else {
+        return;
+    };
+
+    let mut lines: Vec<String> = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .lines()
+        // Skip anything that is not one of our three-field lines.
+        .filter(|line| line.split('\t').count() == 3)
+        .map(str::to_string)
+        .collect();
+    // A fresh launch of the same app supersedes its older entry.
+    lines.retain(|line| line.split('\t').nth(1) != Some(id.as_str()));
+    lines.insert(0, format!("{now}\t{id}\t{name}"));
+    lines.truncate(40);
+
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::write(&path, format!("{}\n", lines.join("\n")));
 }
