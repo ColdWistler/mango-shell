@@ -1590,218 +1590,365 @@ window.mango-overview {
     font-size: 13px;
 }
 
-/* --- Settings app -------------------------------------------------------
- * The panel the dashboard's Settings tile opens (src/settings.rs). Two
- * sections: Bar widgets — every bar widget as a row you can reorder (arrows),
- * move between the left / centre / right slots (chip), and hide (eye) — and
- * Bar shape — an optional height override plus an optional corner radius with
- * per-corner control, applied to the bar surface and every fly-out panel.
- * Edits apply live: the shell persists each one and the running bars repaint
- * in place. The panel keeps the flyout-card silhouette so it reads as one of
- * the family, just wider. */
+/* --- The settings phone ------------------------------------------------
+ * The settings app (src/settings.rs) is not a fly-out card any more: it is a
+ * landscape phone, modelled on the one SekaiPop turns sideways, that rises
+ * from the bottom edge of the screen (src/phone.rs). The slab stays dark
+ * hardware in every theme; the screen inside it follows the theme.
+ */
 
-.mango-settings-panel {
-    min-width: 640px;
-}
-
-.mango-settings-title {
-    color: @on_surface;
-    font-size: 17px;
-    font-weight: 600;
-}
-
-/* The header above each group of controls. */
-.mango-settings-section {
-    color: @on_surface_variant;
-    font-size: 12px;
-    font-weight: 700;
-    margin-top: 6px;
-}
-
-/* --- Bar widgets section ------------------------------------------------ */
-
-.mango-widget-row {
-    background-color: alpha(@on_surface, 0.05);
-    border: 1px solid @outline_variant;
-    padding: 6px 8px;
-    min-height: 30px;
-    transition: background-color 150ms ease, border-color 150ms ease;
-}
-
-.mango-widget-row:hover {
-    background-color: alpha(@on_surface, 0.08);
-    border-color: alpha(@primary, 0.45);
-}
-
-.mango-widget-row label {
-    color: @on_surface;
-    font-size: 13px;
-}
-
-/* The slot chip: click to walk a widget Left → Centre → Right. */
-window.mango-flyout button.mango-slot-chip {
+window.mango-phone-window {
     background-color: transparent;
-    border: 1px solid @outline_variant;
-    border-radius: 0;
-    box-shadow: none;
+    background-image: none;
+    font-family: "Google Sans Flex", "Rubik", "Inter", "Cantarell", sans-serif;
+    font-size: 14px;
+}
+
+/* The slab. The hard offset in the first shadow is the phone's "wall" — a
+ * flat stand-in for the thickness SekaiPop's 2.5D body gets from stacked
+ * layers; the second is the soft shadow it floats on. */
+.mango-phone-body {
+    background-color: #16141a;
+    border: 3px solid alpha(@on_surface, 0.20);
+    border-radius: 72px;
+    padding: 0 16px 16px;
+    box-shadow: 7px 9px 0 0 rgba(0, 0, 0, 0.50),
+                0 26px 60px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* The bezel strip above the screen carries the speaker slit and the camera
+ * cut-out. (The other three bezels are the body's padding.) */
+.mango-phone-hardware {
+    background-color: transparent;
+}
+
+.mango-phone-camera {
+    min-width: 9px;
+    min-height: 9px;
+    border-radius: 99px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background-color: #06080c;
+}
+
+.mango-phone-speaker {
+    min-width: 46px;
+    min-height: 5px;
+    border-radius: 99px;
+    background-color: rgba(255, 255, 255, 0.18);
+}
+
+/* The glass. */
+.mango-phone-screen {
+    background-color: @layer2;
+    border: 1px solid alpha(@on_surface, 0.07);
+    border-radius: 52px;
+    padding: 18px 22px 10px;
+    color: @on_surface;
+}
+
+window.mango-phone-window label {
+    color: @on_surface;
+}
+
+/* --- The phone's own chrome ------------------------------------------- */
+.mango-phone-status {
     color: @on_surface_variant;
-    padding: 3px 10px;
-    min-height: 18px;
-    min-width: 58px;
     font-size: 11px;
     font-weight: 600;
-    transition: background-color 150ms ease, border-color 150ms ease;
+    margin-bottom: 4px;
 }
 
-window.mango-flyout button.mango-slot-chip:hover {
-    background-color: alpha(@primary, 0.18);
-    border-color: @primary;
+.mango-phone-clock {
     color: @on_surface;
+    font-size: 13px;
+    font-weight: 700;
 }
 
-/* The eye: checked = the widget is on the bar. */
-window.mango-flyout togglebutton.mango-visible-toggle {
-    background-color: transparent;
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
-    color: alpha(@on_surface_variant, 0.55);
-    padding: 4px;
-    min-height: 20px;
-    min-width: 20px;
-    transition: background-color 150ms ease, color 150ms ease;
+.mango-phone-date {
+    color: @on_surface_variant;
+    font-size: 11px;
+    font-weight: 600;
 }
 
-window.mango-flyout togglebutton.mango-visible-toggle:hover {
-    background-color: alpha(@on_surface, 0.10);
+.mango-phone-battery {
+    color: @on_surface_variant;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.mango-phone-head {
+    margin-bottom: 10px;
+}
+
+/* The wallpaper as the phone's avatar. */
+.mango-phone-thumb {
+    border: 1px solid alpha(@on_surface, 0.16);
+    border-radius: 13px;
+    background-color: alpha(@on_surface, 0.08);
+}
+
+.mango-phone-title {
     color: @on_surface;
+    font-size: 22px;
+    font-weight: 700;
 }
 
-window.mango-flyout togglebutton.mango-visible-toggle:checked {
-    color: @primary;
+.mango-phone-subtitle {
+    color: @on_surface_variant;
+    font-size: 11px;
+    font-weight: 600;
 }
 
-/* The row-order arrows. */
-window.mango-flyout button.mango-move-button {
-    background-color: transparent;
-    border: 1px solid transparent;
-    border-radius: 0;
+window.mango-phone-window button.mango-phone-close {
+    background-color: alpha(@on_surface, 0.06);
+    border: 1px solid alpha(@outline_variant, 0.80);
+    border-radius: 99px;
     box-shadow: none;
     color: @on_surface_variant;
-    padding: 4px;
-    min-height: 20px;
-    min-width: 20px;
-    transition: background-color 150ms ease, color 150ms ease;
+    padding: 0;
+    min-width: 30px;
+    min-height: 30px;
 }
 
-window.mango-flyout button.mango-move-button:hover {
+window.mango-phone-window button.mango-phone-close:hover {
+    background-color: alpha(@error, 0.16);
+    border-color: @error;
+    color: @on_surface;
+}
+
+/* GTK's button style paints a background-image as well as a colour; the
+ * phone's keys are flat or tinted, never the theme's stock pill. */
+window.mango-phone-window button,
+window.mango-phone-window togglebutton {
+    background-image: none;
+}
+
+/* --- The app's two cards ---------------------------------------------- */
+.mango-phone-card {
+    background-color: alpha(@on_surface, 0.045);
+    border: 1px solid alpha(@outline_variant, 0.70);
+    border-radius: 26px;
+    padding: 16px;
+}
+
+.mango-phone-section {
+    color: @on_surface;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.mango-phone-note {
+    color: @on_surface_variant;
+    font-size: 11px;
+}
+
+/* The widget list scrolls inside its card on a hairline scrollbar. */
+window.mango-phone-window scrollbar trough {
+    background-color: transparent;
+}
+
+window.mango-phone-window scrollbar slider {
+    min-width: 4px;
+    min-height: 4px;
+    border-radius: 99px;
+    background-color: alpha(@on_surface, 0.22);
+}
+
+window.mango-phone-window .mango-widget-row {
+    background-color: alpha(@on_surface, 0.04);
+    border: 1px solid alpha(@outline_variant, 0.60);
+    border-radius: 16px;
+    padding: 2px 6px 2px 12px;
+    min-height: 30px;
+}
+
+window.mango-phone-window .mango-widget-row:hover {
+    background-color: alpha(@on_surface, 0.07);
+    border-color: alpha(@primary, 0.50);
+}
+
+window.mango-phone-window .mango-widget-row label {
+    color: @on_surface;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Slot chip: Left / Centre / Right. */
+window.mango-phone-window button.mango-slot-chip {
+    background-color: alpha(@primary, 0.12);
+    border: 1px solid alpha(@primary, 0.35);
+    border-radius: 99px;
+    box-shadow: none;
+    color: @on_surface;
+    padding: 2px 10px;
+    min-width: 52px;
+    min-height: 20px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+window.mango-phone-window button.mango-slot-chip:hover {
+    background-color: alpha(@primary, 0.24);
+    border-color: @primary;
+}
+
+/* Eye and reorder arrows: little round keys. */
+window.mango-phone-window button.mango-move-button,
+window.mango-phone-window togglebutton.mango-visible-toggle {
+    background-color: transparent;
+    border: none;
+    border-radius: 99px;
+    box-shadow: none;
+    color: @on_surface_variant;
+    padding: 0;
+    min-width: 24px;
+    min-height: 24px;
+}
+
+window.mango-phone-window button.mango-move-button:hover,
+window.mango-phone-window togglebutton.mango-visible-toggle:hover {
     background-color: alpha(@on_surface, 0.10);
     color: @on_surface;
 }
 
-window.mango-flyout button.mango-move-button:disabled {
+window.mango-phone-window button.mango-move-button:disabled {
     color: alpha(@on_surface_variant, 0.30);
 }
 
-/* --- Bar shape section -------------------------------------------------- */
-
-.mango-shape-row {
-    min-height: 26px;
+window.mango-phone-window togglebutton.mango-visible-toggle:checked {
+    color: @primary;
+    background-color: alpha(@primary, 0.12);
 }
 
-.mango-shape-row > label {
-    color: @on_surface;
-    font-size: 13px;
+/* Shape rows: name, slider, override chip. */
+window.mango-phone-window .mango-shape-row {
+    min-height: 30px;
 }
 
-/* The "use this override" chip: checked = the override is in force. */
-window.mango-flyout togglebutton.mango-override-switch {
-    background-color: alpha(@on_surface, 0.06);
+window.mango-phone-window .mango-shape-row > label {
+    color: @on_surface_variant;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+window.mango-phone-window togglebutton.mango-override-switch {
+    background-color: alpha(@on_surface, 0.05);
     border: 1px solid @outline_variant;
-    border-radius: 0;
+    border-radius: 99px;
     box-shadow: none;
     color: @on_surface_variant;
-    padding: 3px 12px;
+    padding: 2px 12px;
     min-height: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    transition: background-color 150ms ease, border-color 150ms ease;
+    font-size: 10px;
+    font-weight: 700;
 }
 
-window.mango-flyout togglebutton.mango-override-switch:checked {
+window.mango-phone-window togglebutton.mango-override-switch:checked {
     background-color: alpha(@primary, 0.22);
     border-color: @primary;
     color: @on_surface;
 }
 
 /* The four corner toggles, glyphed the way they sit on screen. */
-window.mango-flyout togglebutton.mango-corner-button {
-    background-color: alpha(@on_surface, 0.06);
+window.mango-phone-window togglebutton.mango-corner-button {
+    background-color: alpha(@on_surface, 0.05);
     border: 1px solid @outline_variant;
-    border-radius: 0;
+    border-radius: 11px;
     box-shadow: none;
     color: @on_surface_variant;
-    padding: 4px 10px;
+    padding: 3px 9px;
     min-height: 22px;
     min-width: 28px;
     font-size: 14px;
-    transition: background-color 150ms ease, border-color 150ms ease;
 }
 
-window.mango-flyout togglebutton.mango-corner-button:hover {
+window.mango-phone-window togglebutton.mango-corner-button:hover {
     border-color: alpha(@primary, 0.55);
 }
 
-window.mango-flyout togglebutton.mango-corner-button:checked {
+window.mango-phone-window togglebutton.mango-corner-button:checked {
     background-color: alpha(@primary, 0.22);
     border-color: @primary;
     color: @on_surface;
 }
 
 /* The two sliders (height, corner radius). */
-window.mango-flyout scale.mango-shape-slider trough {
+window.mango-phone-window scale.mango-shape-slider trough {
     background-color: alpha(@on_surface, 0.10);
     border: none;
-    border-radius: 0;
-    min-height: 6px;
+    border-radius: 99px;
+    min-height: 4px;
 }
 
-window.mango-flyout scale.mango-shape-slider highlight {
+window.mango-phone-window scale.mango-shape-slider highlight {
     background-color: @primary;
-    border-radius: 0;
+    border-radius: 99px;
 }
 
-window.mango-flyout scale.mango-shape-slider slider {
+window.mango-phone-window scale.mango-shape-slider slider {
     background-color: @on_surface;
-    border: 1px solid @outline_variant;
-    border-radius: 0;
-    min-width: 12px;
+    border: 2px solid @layer2;
+    border-radius: 99px;
+    min-width: 16px;
     min-height: 16px;
+    box-shadow: none;
 }
 
-window.mango-flyout scale.mango-shape-slider value {
+window.mango-phone-window scale.mango-shape-slider value {
     color: @on_surface_variant;
     font-size: 11px;
     font-weight: 600;
-    min-width: 36px;
+    min-width: 34px;
 }
 
-/* Reset: a quiet button that only shows its teeth on hover. */
-window.mango-flyout button.mango-settings-reset {
+/* A live swatch of the bar above the reset key. The height and corners come
+ * from the app; the surface look is the bar's own translucent layer. */
+.mango-shape-preview {
+    background-color: @layer0;
+    border: 1px solid @layer0_border;
+    border-radius: 14px;
+    box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* Reset: a quiet key that only shows its teeth on hover. */
+window.mango-phone-window button.mango-settings-reset {
     background-color: transparent;
     border: 1px solid @outline_variant;
-    border-radius: 0;
+    border-radius: 99px;
     box-shadow: none;
     color: @on_surface_variant;
-    padding: 8px 16px;
+    padding: 5px 16px;
     min-height: 20px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
-window.mango-flyout button.mango-settings-reset:hover {
+window.mango-phone-window button.mango-settings-reset:hover {
     background-color: alpha(@error, 0.14);
     border-color: @error;
     color: @on_surface;
+}
+
+/* The home indicator: the phone's "swipe up". */
+window.mango-phone-window button.mango-phone-home {
+    background-color: transparent;
+    border: none;
+    border-radius: 99px;
+    box-shadow: none;
+    padding: 5px 16px 3px;
+    min-height: 15px;
+    margin-top: 4px;
+}
+
+.mango-phone-home-bar {
+    min-width: 112px;
+    min-height: 5px;
+    border-radius: 99px;
+    background-color: alpha(@on_surface, 0.45);
+    transition: background-color 150ms ease;
+}
+
+window.mango-phone-window button.mango-phone-home:hover .mango-phone-home-bar {
+    background-color: @primary;
 }

@@ -27,8 +27,10 @@
 //!                                          per tag with every window drawn to
 //!                                          scale (bar button or SIGRTMIN+1)
 //!   +-- SettingsModel        (settings.rs)  bar customisation: reorder the
-//!                                          bar's widgets, override its height
-//!                                          and corner rounding (dashboard tile)
+//!   |         + phone.rs                   bar's widgets, override its height
+//!   |                                      and corner rounding — the app is a
+//!   |                                      phone that rises from the bottom
+//!   |                                      of the screen (dashboard tile)
 //! ```
 //!
 //! Why the invisible root? A GTK application needs a window to stay alive, and
@@ -44,6 +46,7 @@ mod launcher;
 mod mango;
 mod overview;
 mod panel;
+mod phone;
 mod settings;
 mod shortcuts;
 mod theme;
@@ -735,11 +738,12 @@ fn find_monitor(name: &str) -> Option<gdk::Monitor> {
 }
 
 /// Keep the fly-out surfaces (launcher, dashboard, theme and panel galleries,
-/// shortcut reference, settings app) hanging just below the active panel's
-/// bar. Each panel has its own height and may float — and the settings app's
-/// Height override can pin the bar to something else entirely — so the gap is
-/// computed from the *effective* height and re-applied whenever either
-/// changes. The wallpaper carousel is fullscreen and needs no gap.
+/// shortcut reference) hanging just below the active panel's bar. Each panel
+/// has its own height and may float — and the settings app's Height override
+/// can pin the bar to something else entirely — so the gap is computed from
+/// the *effective* height and re-applied whenever either changes. The
+/// wallpaper carousel is fullscreen and needs no gap; the settings phone rises
+/// from the bottom of the screen and owns its top margin (see `phone.rs`).
 fn set_flyout_gap(shell: &Shell, panel: &panel::Panel) {
     let gap = match shell.shape.and_then(|shape| shape.height) {
         Some(height) => panel.margin_top + height as i32 + 6,
@@ -751,7 +755,6 @@ fn set_flyout_gap(shell: &Shell, panel: &panel::Panel) {
         shell.theme_picker.widget(),
         shell.panel_picker.widget(),
         shell.shortcuts.widget(),
-        shell.settings.widget(),
     ] {
         window.set_margin(Edge::Top, gap);
     }

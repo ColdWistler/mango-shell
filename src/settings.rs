@@ -1,5 +1,10 @@
 //! The settings app — the seam behind the dashboard's Settings tile, now a
-//! real panel.
+//! phone.
+//!
+//! The app is a landscape phone that rises from the bottom of the screen
+//! (see [`crate::phone`]): a slab with a bezel, a speaker, a camera and a
+//! status bar, with the settings themselves laid out on its screen in two
+//! cards, closed with the home indicator along the bottom.
 //!
 //! Two things are customisable, both applied **live** (every change is pushed
 //! to the shell as it happens, saved, and every bar repaints in place):
@@ -32,6 +37,8 @@ use relm4::prelude::*;
 use crate::bar::WidgetId;
 use crate::flyout;
 use crate::panel::Slot;
+use crate::phone;
+use crate::widgets::power;
 
 /// Radius the Corner radius slider starts at when the override is switched
 /// on, in pixels.
@@ -88,6 +95,13 @@ impl Shape {
             // The fly-outs hang under the bar and share its silhouette, so
             // the same corners round on every panel card.
             css.push_str("\nwindow.mango-flyout .mango-flyout-panel {\n");
+            css.push_str(&self.corners_css());
+            css.push_str("}\n");
+
+            // The settings phone shows a live swatch of the bar above its
+            // reset key, so it follows the silhouette too. With no radius
+            // override it keeps the default rounding from the stylesheet.
+            css.push_str("\nwindow.mango-phone-window .mango-shape-preview {\n");
             css.push_str(&self.corners_css());
             css.push_str("}\n");
         }
@@ -309,12 +323,10 @@ pub struct SettingsInit {
 }
 
 pub struct SettingsModel {
-    /// The root, cloned so `update` can show/hide it.
-    window: gtk::Window,
-    /// Slides + fades the panel out from under the bar.
-    flyout: flyout::Flyout,
-    /// The wallpaper snapshot in the panel header.
-    banner: flyout::Banner,
+    /// The phone body and the bottom-anchored surface it rises on.
+    phone: phone::Phone,
+    /// The wallpaper chip in the phone's header.
+    thumb: flyout::Banner,
     /// The working copy; every edit is pushed up immediately.
     layout: Vec<LayoutEntry>,
     shape: Shape,
@@ -331,13 +343,16 @@ pub struct SettingsModel {
     radius_switch: gtk::ToggleButton,
     radius_scale: gtk::Scale,
     corners: [gtk::ToggleButton; 4],
+    /// The live bar swatch at the bottom of the shape card.
+    preview: gtk::Box,
 }
 
 #[derive(Debug)]
 pub enum SettingsInput {
     /// Flip visibility (sent by the shell from the dashboard's tile).
     Toggle,
-    /// Hide without editing (Escape or a backdrop click).
+    /// Hide without editing (Escape, the header's close key, or the home
+    /// indicator).
     Hide,
     /// The wallpaper changed; repaint the panel header.
     Banner(Option<PathBuf>),
@@ -384,11 +399,11 @@ impl SimpleComponent for SettingsModel {
     view! {
         #[root]
         gtk::Window {
-            set_css_classes: &["mango-flyout", "mango-settings"],
+            set_css_classes: &["mango-phone-window"],
             set_decorated: false,
 
             #[wrap(Some)]
-            set_child = &model.flyout.widget() {},
+            set_child = &model.phone.widget() {},
         }
     }
 
@@ -397,33 +412,139 @@ impl SimpleComponent for SettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Fly-out surface: hugs the top of the monitor just below the bar,
-        // exclusive keyboard while open, hidden until toggled.
-        flyout::prepare_layer(&root, "mango-settings");
+        // The phone surface: bottom-centred, exclusive keyboard while open,
+        // hidden until toggled.
+        let phone = phone::Phone::new(&root);
 
-        let banner = flyout::make_banner();
-        flyout::set_banner(&banner, init.wallpaper.as_deref());
+        let thumb = flyout::make_thumb(46, 13.0);
+        flyout::set_banner(&thumb, init.wallpaper.as_deref());
 
         let syncing = Rc::new(Cell::new(false));
 
-        // --- Title ----------------------------------------------------------
+        // --- Status bar (the phone's own chrome) ----------------------------
+        let clock = gtk::Label::new(None);
+        clock.add_css_class("mango-phone-clock");
+        let date = gtk::Label::new(None);
+        date.add_css_class("mango-phone-date");
+        date.set_hexpand(true);
+        date.set_xalign(0.0);
+
+        let battery_icon = gtk::Image::new();
+        battery_icon.set_pixel_size(15);
+        let battery_text = gtk::Label::new(None);
+        battery_text.add_css_class("mango-phone-battery");
+        let battery = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        battery.add_css_class("mango-phone-battery");
+        battery.set_valign(gtk::Align::Center);
+        battery.append(&battery_icon);
+        battery.append(&battery_text);
+
+        let status = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        status.add_css_class("mango-phone-status");
+        status.append(&clock);
+        status.append(&date);
+        status.append(&battery);
+        phone.screen().append(&status);
+
+        // Keep the status bar's clock and battery current. Cheap (two labels
+        // and a couple of sysfs reads), so it ticks whether the phone is up
+        // or not — it is always right the moment the phone rises.
+        let update_status = {
+            let clock = clock.clone();
+            let date = date.clone();
+            let battery_icon = battery_icon.clone();
+            let battery_text = battery_text.clone();
+            move || {
+                let now = glib::DateTime::now_local().ok();
+                clock.set_text(
+                    &now.as_ref()
+                        .and_then(|now| now.format("%H:%M").ok())
+                        .map(|text| text.to_string())
+                        .unwrap_or_default(),
+                );
+                date.set_text(
+                    &now.as_ref()
+                        .and_then(|now| now.format("%a, %d %b").ok())
+                        .map(|text| text.to_string())
+                        .unwrap_or_default(),
+                );
+                let state = power::read_battery();
+                if state.present {
+                    battery_icon.set_visible(true);
+                    battery_text.set_visible(true);
+                    battery_icon.set_icon_name(Some(state.icon_name()));
+                    battery_text.set_text(&format!("{}%", state.percent));
+                } else {
+                    battery_icon.set_visible(false);
+                    battery_text.set_visible(false);
+                }
+            }
+        };
+        update_status();
+        glib::timeout_add_seconds_local(30, move || {
+            update_status();
+            glib::ControlFlow::Continue
+        });
+
+        // --- Header ---------------------------------------------------------
         let title = gtk::Label::new(Some("Settings"));
-        title.add_css_class("mango-settings-title");
+        title.add_css_class("mango-phone-title");
         title.set_xalign(0.0);
+        let subtitle = gtk::Label::new(Some("Mango Shell"));
+        subtitle.add_css_class("mango-phone-subtitle");
+        subtitle.set_xalign(0.0);
+        let titles = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        titles.set_hexpand(true);
+        titles.set_valign(gtk::Align::Center);
+        titles.append(&title);
+        titles.append(&subtitle);
+
+        let close = gtk::Button::new();
+        close.add_css_class("mango-phone-close");
+        close.set_tooltip_text(Some("Close settings"));
+        close.set_valign(gtk::Align::Center);
+        let close_image = gtk::Image::from_icon_name("window-close-symbolic");
+        close_image.set_pixel_size(15);
+        close.set_child(Some(&close_image));
+        let close_sender = sender.clone();
+        close.connect_clicked(move |_| {
+            close_sender.input(SettingsInput::Hide);
+        });
+
+        let head = gtk::Box::new(gtk::Orientation::Horizontal, 14);
+        head.add_css_class("mango-phone-head");
+        head.append(&thumb.widget);
+        head.append(&titles);
+        head.append(&close);
+        phone.screen().append(&head);
+
+        // --- The two cards --------------------------------------------------
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 14);
+        content.add_css_class("mango-phone-content");
+        content.set_vexpand(true);
+        content.set_homogeneous(true);
+
+        let widgets_card = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        widgets_card.add_css_class("mango-phone-card");
+        let shape_card = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        shape_card.add_css_class("mango-phone-card");
+        content.append(&widgets_card);
+        content.append(&shape_card);
+        phone.screen().append(&content);
 
         // --- Bar widgets ----------------------------------------------------
         let widgets_heading = gtk::Label::new(Some("Bar widgets"));
-        widgets_heading.add_css_class("mango-settings-section");
+        widgets_heading.add_css_class("mango-phone-section");
         widgets_heading.set_xalign(0.0);
 
         let widgets_hint = gtk::Label::new(Some(
             "Arrows reorder, the chip moves a widget between the left, centre \
-             and right of the bar, and the eye hides it. Every change hits \
-             the bar immediately.",
+             and right of the bar, and the eye hides it.",
         ));
-        widgets_hint.add_css_class("mango-card-note");
+        widgets_hint.add_css_class("mango-phone-note");
         widgets_hint.set_xalign(0.0);
         widgets_hint.set_wrap(true);
+        widgets_hint.set_max_width_chars(46);
 
         let list = gtk::Box::new(gtk::Orientation::Vertical, 4);
         list.add_css_class("mango-widget-list");
@@ -431,13 +552,17 @@ impl SimpleComponent for SettingsModel {
         let scrolled = gtk::ScrolledWindow::new();
         scrolled.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
         scrolled.set_child(Some(&list));
-        scrolled.set_min_content_height(220);
-        scrolled.set_max_content_height(340);
-        scrolled.set_propagate_natural_height(true);
+        scrolled.set_min_content_height(120);
+        scrolled.set_propagate_natural_height(false);
+        scrolled.set_vexpand(true);
+
+        widgets_card.append(&widgets_heading);
+        widgets_card.append(&widgets_hint);
+        widgets_card.append(&scrolled);
 
         // --- Bar shape ------------------------------------------------------
         let shape_heading = gtk::Label::new(Some("Bar shape"));
-        shape_heading.add_css_class("mango-settings-section");
+        shape_heading.add_css_class("mango-phone-section");
         shape_heading.set_xalign(0.0);
 
         let height_switch = override_switch("Override the panel's bar height");
@@ -476,17 +601,28 @@ impl SimpleComponent for SettingsModel {
         }
 
         let shape_hint = gtk::Label::new(Some(
-            "Applies to the bar surface and to every fly-out panel. Drag a \
-             slider to take over that value — its switch hands it back to \
-             the panel's own setting.",
+            "Drag a slider to take over that value; its switch hands it back \
+             to the panel's own setting.",
         ));
-        shape_hint.add_css_class("mango-card-note");
+        shape_hint.add_css_class("mango-phone-note");
         shape_hint.set_xalign(0.0);
         shape_hint.set_wrap(true);
+        shape_hint.set_max_width_chars(46);
+
+        // A live swatch of the bar, so the shape controls show their work.
+        // The height is set in `sync_shape`; the corners come in with the
+        // stylesheet (see `Shape::css`).
+        let preview = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        preview.add_css_class("mango-shape-preview");
+        preview.set_halign(gtk::Align::Fill);
+        let preview_note = gtk::Label::new(Some("Live preview"));
+        preview_note.add_css_class("mango-phone-note");
+        preview_note.set_halign(gtk::Align::Center);
 
         // --- Reset ----------------------------------------------------------
         let reset = gtk::Button::new();
         reset.add_css_class("mango-settings-reset");
+        reset.set_halign(gtk::Align::Center);
         reset.set_tooltip_text(Some(
             "Restore the default widget layout and the panel's own bar shape",
         ));
@@ -496,24 +632,40 @@ impl SimpleComponent for SettingsModel {
             reset_sender.input(SettingsInput::Reset);
         });
 
-        // --- The panel ------------------------------------------------------
-        let panel = gtk::Box::new(gtk::Orientation::Vertical, 14);
-        panel.add_css_class("mango-settings-panel");
-        panel.add_css_class("mango-flyout-panel");
-        panel.append(&banner.widget);
-        panel.append(&title);
-        panel.append(&widgets_heading);
-        panel.append(&widgets_hint);
-        panel.append(&scrolled);
-        panel.append(&shape_heading);
-        panel.append(&height_row);
-        panel.append(&radius_row);
-        panel.append(&corners_row);
-        panel.append(&shape_hint);
-        panel.append(&reset);
+        // A spacer so the preview and the reset sit on the card's bottom
+        // edge, and the shape card fills the screen's height like the widget
+        // list does.
+        let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        spacer.set_vexpand(true);
+        spacer.set_valign(gtk::Align::Fill);
 
-        let flyout_panel = flyout::Flyout::new(&root);
-        flyout_panel.set_child(&panel);
+        shape_card.append(&shape_heading);
+        shape_card.append(&height_row);
+        shape_card.append(&radius_row);
+        shape_card.append(&corners_row);
+        shape_card.append(&shape_hint);
+        shape_card.append(&spacer);
+        shape_card.append(&preview);
+        shape_card.append(&preview_note);
+        shape_card.append(&reset);
+
+        // --- Home indicator -------------------------------------------------
+        // The phone's "swipe up": a pill on the screen's bottom edge. Tapping
+        // it (or Escape, or the header's close key) puts the phone away.
+        let home = gtk::Button::new();
+        home.add_css_class("mango-phone-home");
+        home.set_tooltip_text(Some("Close settings"));
+        home.set_halign(gtk::Align::Center);
+        let home_bar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        home_bar.add_css_class("mango-phone-home-bar");
+        home_bar.set_halign(gtk::Align::Center);
+        home_bar.set_valign(gtk::Align::Center);
+        home.set_child(Some(&home_bar));
+        let home_sender = sender.clone();
+        home.connect_clicked(move |_| {
+            home_sender.input(SettingsInput::Hide);
+        });
+        phone.screen().append(&home);
 
         // --- Wire the shape controls ---------------------------------------
         {
@@ -563,9 +715,8 @@ impl SimpleComponent for SettingsModel {
         }
 
         let mut model = SettingsModel {
-            window: root.clone(),
-            flyout: flyout_panel,
-            banner,
+            phone,
+            thumb,
             layout: init.layout,
             shape: init.shape.unwrap_or_default(),
             default_height: init.default_height,
@@ -576,6 +727,7 @@ impl SimpleComponent for SettingsModel {
             radius_switch,
             radius_scale,
             corners,
+            preview,
         };
 
         let widgets = view_output!();
@@ -593,17 +745,6 @@ impl SimpleComponent for SettingsModel {
         });
         root.add_controller(keys);
 
-        // Clicking anywhere outside the panel closes it.
-        let click_sender = sender.clone();
-        let click_root = root.clone();
-        let click = gtk::GestureClick::new();
-        click.connect_pressed(move |_, _, x, y| {
-            if !flyout::click_inside(&panel, &click_root, x, y) {
-                click_sender.input(SettingsInput::Hide);
-            }
-        });
-        root.add_controller(click);
-
         model.render_rows(&sender);
         model.sync_shape();
 
@@ -613,14 +754,14 @@ impl SimpleComponent for SettingsModel {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             SettingsInput::Toggle => {
-                if self.window.is_visible() {
+                if self.phone.is_open() {
                     self.hide();
                 } else {
                     self.show();
                 }
             }
             SettingsInput::Hide => self.hide(),
-            SettingsInput::Banner(path) => flyout::set_banner(&self.banner, path.as_deref()),
+            SettingsInput::Banner(path) => flyout::set_banner(&self.thumb, path.as_deref()),
 
             SettingsInput::Move { index, delta } => {
                 self.move_entry(index, delta);
@@ -718,11 +859,11 @@ impl SimpleComponent for SettingsModel {
 impl SettingsModel {
     fn show(&mut self) {
         self.sync_shape();
-        self.flyout.show(None);
+        self.phone.show();
     }
 
     fn hide(&mut self) {
-        self.flyout.hide();
+        self.phone.hide();
     }
 
     /// Swap `index` one place towards `delta`, clamped at both ends.
@@ -745,7 +886,11 @@ impl SettingsModel {
         let _ = sender.output(SettingsOutput::LayoutChanged(self.layout.clone()));
     }
 
-    fn emit_shape(&self, sender: &ComponentSender<Self>) {
+    fn emit_shape(&mut self, sender: &ComponentSender<Self>) {
+        // The corners/radius travel in the stylesheet; the swatch's height
+        // is sized here.
+        self.preview
+            .set_size_request(-1, self.shape.height.unwrap_or(self.default_height) as i32);
         let _ = sender.output(SettingsOutput::ShapeChanged(self.shape));
     }
 
@@ -837,6 +982,8 @@ impl SettingsModel {
         self.height_switch.set_active(height.is_some());
         self.height_scale
             .set_value(height.unwrap_or(self.default_height) as f64);
+        self.preview
+            .set_size_request(-1, height.unwrap_or(self.default_height) as i32);
 
         let radius = self.shape.radius;
         self.radius_switch.set_active(radius.is_some());
@@ -1019,7 +1166,7 @@ corners=bottom-left,bottom-right
     }
 
     #[test]
-    fn shape_css_overrides_the_bar_and_the_flyouts() {
+    fn shape_css_overrides_the_bar_and_the_chrome() {
         // With no overrides, the stylesheet gains nothing (panels rule).
         assert!(Shape::default().css().is_empty());
 
@@ -1038,6 +1185,8 @@ corners=bottom-left,bottom-right
         assert!(css.contains("border-top-right-radius: 0px;"));
         // The fly-out cards share the silhouette.
         assert!(css.contains("window.mango-flyout .mango-flyout-panel {"));
+        // So does the phone's live bar preview.
+        assert!(css.contains("window.mango-phone-window .mango-shape-preview {"));
 
         // A radius with no height still styles both, but not the height.
         let shape = Shape {

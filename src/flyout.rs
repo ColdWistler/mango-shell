@@ -185,7 +185,29 @@ pub fn make_banner() -> Banner {
     let painted = image.clone();
     widget.set_draw_func(move |_, cr, width, height| {
         if let Some(pixbuf) = painted.borrow().as_ref() {
-            draw_cover(cr, pixbuf, width, height);
+            draw_cover(cr, pixbuf, width, height, BANNER_RADIUS);
+        }
+    });
+
+    Banner { widget, image }
+}
+
+/// A small square wallpaper chip, for the settings phone's header. Painted
+/// with the same cover-fit as the banners, rounded by `radius` (a circle when
+/// it is half the chip).
+pub fn make_thumb(size: i32, radius: f64) -> Banner {
+    let widget = gtk::DrawingArea::new();
+    widget.set_content_width(size);
+    widget.set_content_height(size);
+    widget.set_size_request(size, size);
+    widget.add_css_class("mango-phone-thumb");
+    widget.set_visible(false);
+
+    let image: Rc<RefCell<Option<Pixbuf>>> = Rc::new(RefCell::new(None));
+    let painted = image.clone();
+    widget.set_draw_func(move |_, cr, width, height| {
+        if let Some(pixbuf) = painted.borrow().as_ref() {
+            draw_cover(cr, pixbuf, width, height, radius);
         }
     });
 
@@ -208,8 +230,8 @@ pub fn set_banner(banner: &Banner, path: Option<&Path>) {
 }
 
 /// Paint `pixbuf` into `width` x `height`, scaled to cover and centre-cropped,
-/// then clipped to the banner's rounded corners.
-fn draw_cover(cr: &cairo::Context, pixbuf: &Pixbuf, width: i32, height: i32) {
+/// then clipped to a rounded rectangle of `radius`.
+fn draw_cover(cr: &cairo::Context, pixbuf: &Pixbuf, width: i32, height: i32, radius: f64) {
     let image_width = f64::from(pixbuf.width());
     let image_height = f64::from(pixbuf.height());
     let width = f64::from(width);
@@ -225,7 +247,7 @@ fn draw_cover(cr: &cairo::Context, pixbuf: &Pixbuf, width: i32, height: i32) {
     let y = (height - draw_height) / 2.0;
 
     let _ = cr.save();
-    rounded_rect(cr, 0.0, 0.0, width, height, BANNER_RADIUS);
+    rounded_rect(cr, 0.0, 0.0, width, height, radius);
     cr.clip();
     cr.translate(x, y);
     cr.scale(scale, scale);
