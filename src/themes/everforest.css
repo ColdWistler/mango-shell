@@ -1,0 +1,31 @@
+/* Everforest Dark — https://github.com/sainnhe/everforest
+ *
+ * Material 3 token overrides layered on top of `src/style.css`.
+ */
+
+@define-color layer0            rgba(45, 53, 59, 0.85);
+@define-color layer1            rgba(55, 65, 71, 0.72);
+@define-color layer2            rgba(67, 79, 85, 0.96);
+@define-color layer0_border     rgba(104, 122, 127, 0.55);
+@define-color layer1_border     rgba(104, 122, 127, 0.50);
+@define-color divider           rgba(131, 192, 146, 0.35);
+
+@define-color on_surface          #d3c6aa;
+@define-color on_surface_variant  #b9c0aa;
+@define-color outline             #7a8478;
+@define-color outline_variant     #4a5456;
+
+@define-color primary             #a7c080;
+@define-color on_primary          #2d353b;
+@define-color primary_container   #4a5456;
+@define-color on_primary_container #d3c6aa;
+@define-color secondary_container #4a5456;
+@define-color on_secondary_container #d3c6aa;
+@define-color tertiary_container  #7a8478;
+@define-color on_tertiary_container #d3c6aa;
+
+@define-color error               #e67e80;
+@define-color on_error            #2d353b;
+@define-color error_container     #7c3c3d;
+@define-color on_error_container  #ffd9da;
+@define-color scrim               rgba(45, 53, 59, 0.55);

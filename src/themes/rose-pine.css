@@ -1,0 +1,31 @@
+/* Rose Pine — https://rosepinetheme.com
+ *
+ * Material 3 token overrides layered on top of `src/style.css`.
+ */
+
+@define-color layer0            rgba(25, 23, 36, 0.85);
+@define-color layer1            rgba(38, 35, 58, 0.72);
+@define-color layer2            rgba(47, 43, 73, 0.96);
+@define-color layer0_border     rgba(110, 106, 134, 0.55);
+@define-color layer1_border     rgba(110, 106, 134, 0.50);
+@define-color divider           rgba(196, 167, 231, 0.35);
+
+@define-color on_surface          #e0def4;
+@define-color on_surface_variant  #c4b7e0;
+@define-color outline             #6e6a86;
+@define-color outline_variant     #3e3b5e;
+
+@define-color primary             #c4a7e7;
+@define-color on_primary          #191724;
+@define-color primary_container   #3e3b5e;
+@define-color on_primary_container #e0def4;
+@define-color secondary_container #3e3b5e;
+@define-color on_secondary_container #e0def4;
+@define-color tertiary_container  #6e6a86;
+@define-color on_tertiary_container #e0def4;
+
+@define-color error               #eb6f92;
+@define-color on_error            #191724;
+@define-color error_container     #7c2943;
+@define-color on_error_container  #ffd9e1;
+@define-color scrim               rgba(25, 23, 36, 0.55);

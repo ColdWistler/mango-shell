@@ -1,0 +1,8 @@
+/* Matugen — dynamic wallpaper-derived theme.
+ *
+ * This theme deliberately defines nothing: when Matugen is active, the
+ * generated palette lives in `~/.config/mango-shell/style.css` (loaded as
+ * the final user override) and provides all `@define-color` tokens. The
+ * other themes are blocks of overrides layered on top, so "no overrides"
+ * here lets the Matugen-generated palette shine through unchanged.
+ */

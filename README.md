@@ -95,6 +95,7 @@ Four hand-tuned colour schemes ship with the shell, each a small block of
 | [Catppuccin](https://catppuccin.com) | `catppuccin` | Mocha (base `#1e1e2e`, mauve accent) |
 | [Gruvbox](https://github.com/morhetz/gruvbox) | `gruvbox` | dark (retro-groove, yellow accent) |
 | [Tokyo Night](https://github.com/folke/tokyonight.nvim) | `tokyonight` | night (bg `#1a1b26`, blue accent) |
+| Matugen (Wallpaper) | `matugen` | wallpaper-derived via [matugen](https://github.com/InioX/matugen) (uses generated `style.css`) |
 
 Switch them with the **theme button** in the bar (next to the launcher and
 wallpaper buttons): the popover applies a theme instantly and stays useful for

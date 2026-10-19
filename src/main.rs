@@ -150,12 +150,10 @@ impl SimpleComponent for Shell {
         // than in `main`, where the display does not exist yet.
         //
         // The picked theme's token overrides are spliced in after the built-in
-        // defaults, and a user stylesheet at ~/.config/mango-shell/style.css
-        // is appended on top, so wallpaper-derived `@define-color` overrides
-        // (e.g. from matugen) still win over the theme. We keep our own
-        // provider (rather than `relm4::set_global_css`) so it can be reloaded
-        // in place when the theme — or the wallpaper, and therefore the
-        // palette — changes.
+        // defaults. For the Matugen (Wallpaper) theme, the matugen-generated
+        // stylesheet at ~/.config/mango-shell/style.css is appended on top.
+        // We keep our own provider (rather than `relm4::set_global_css`) so
+        // it can be reloaded in place when the theme or wallpaper changes.
         let theme = theme::load_current();
         let panel = panel::load_current();
         let css = gtk::CssProvider::new();
@@ -571,16 +569,12 @@ fn set_flyout_gap(shell: &Shell, panel: &panel::Panel) {
 
 /// Build the stylesheet the shell loads: the built-in defaults, then the
 /// selected **panel**'s CSS profile (its default palette + structural rules),
-/// then the selected theme's token overrides, then an optional user override
-/// on top.
+/// then the selected theme's token overrides.
 ///
-/// The override lives at `~/.config/mango-shell/style.css` and is meant for
-/// `@define-color` tokens, which is how you tint the shell to the wallpaper
-/// (the way end4-pC does with matugen). It sits after everything, so a
-/// wallpaper-derived palette always wins. Panels define `@define-color`
-/// tokens too, but the theme is appended *after* them, so picking e.g.
-/// Gruvbox recolours any panel — panels supply the default palette, themes
-/// the override.
+/// For the Matugen (Wallpaper) theme, also append the matugen-generated
+/// palette from `~/.config/mango-shell/style.css` so the wallpaper-derived
+/// colours apply. For other themes, do not apply that universal override
+/// (so switching themes actually changes the appearance).
 fn load_css(panel: &panel::Panel, theme: &theme::Theme) -> String {
     let mut css = String::from(include_str!("style.css"));
 
@@ -590,11 +584,13 @@ fn load_css(panel: &panel::Panel, theme: &theme::Theme) -> String {
     css.push('\n');
     css.push_str(theme.css);
 
-    if let Some(home) = std::env::var_os("HOME") {
-        let path = std::path::Path::new(&home).join(".config/mango-shell/style.css");
-        if let Ok(extra) = std::fs::read_to_string(&path) {
-            css.push('\n');
-            css.push_str(&extra);
+    if theme.id == "matugen" {
+        if let Some(home) = std::env::var_os("HOME") {
+            let path = std::path::Path::new(&home).join(".config/mango-shell/style.css");
+            if let Ok(extra) = std::fs::read_to_string(&path) {
+                css.push('\n');
+                css.push_str(&extra);
+            }
         }
     }
 

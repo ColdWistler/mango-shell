@@ -1,0 +1,31 @@
+/* Kanagawa — https://github.com/rebelot/kanagawa.nvim
+ *
+ * Material 3 token overrides layered on top of `src/style.css`.
+ */
+
+@define-color layer0            rgba(28, 28, 36, 0.85);
+@define-color layer1            rgba(40, 40, 50, 0.72);
+@define-color layer2            rgba(52, 52, 63, 0.96);
+@define-color layer0_border     rgba(110, 110, 125, 0.55);
+@define-color layer1_border     rgba(110, 110, 125, 0.50);
+@define-color divider           rgba(126, 156, 216, 0.35);
+
+@define-color on_surface          #dcd7ba;
+@define-color on_surface_variant  #c8c5b6;
+@define-color outline             #54546d;
+@define-color outline_variant     #3a3a4f;
+
+@define-color primary             #7e9cd8;
+@define-color on_primary          #1f1f28;
+@define-color primary_container   #363646;
+@define-color on_primary_container #dcd7ba;
+@define-color secondary_container #363646;
+@define-color on_secondary_container #dcd7ba;
+@define-color tertiary_container  #54546d;
+@define-color on_tertiary_container #dcd7ba;
+
+@define-color error               #e82424;
+@define-color on_error            #1f1f28;
+@define-color error_container     #7c1414;
+@define-color on_error_container  #ffd2cc;
+@define-color scrim               rgba(28, 28, 36, 0.55);

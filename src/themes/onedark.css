@@ -1,0 +1,31 @@
+/* One Dark — https://github.com/atom/one-dark-syntax
+ *
+ * Material 3 token overrides layered on top of `src/style.css`.
+ */
+
+@define-color layer0            rgba(33, 37, 43, 0.85);
+@define-color layer1            rgba(40, 44, 52, 0.72);
+@define-color layer2            rgba(53, 59, 69, 0.96);
+@define-color layer0_border     rgba(92, 99, 112, 0.55);
+@define-color layer1_border     rgba(92, 99, 112, 0.50);
+@define-color divider           rgba(97, 175, 239, 0.35);
+
+@define-color on_surface          #abb2bf;
+@define-color on_surface_variant  #9ca3b0;
+@define-color outline             #5c6370;
+@define-color outline_variant     #3e4451;
+
+@define-color primary             #61afef;
+@define-color on_primary          #21252b;
+@define-color primary_container   #3e4451;
+@define-color on_primary_container #abb2bf;
+@define-color secondary_container #3e4451;
+@define-color on_secondary_container #abb2bf;
+@define-color tertiary_container  #5c6370;
+@define-color on_tertiary_container #abb2bf;
+
+@define-color error               #e06c75;
+@define-color on_error            #21252b;
+@define-color error_container     #7c353b;
+@define-color on_error_container  #ffd9dd;
+@define-color scrim               rgba(33, 37, 43, 0.55);

@@ -1,0 +1,31 @@
+/* Dracula — https://draculatheme.com
+ *
+ * Material 3 token overrides layered on top of `src/style.css`.
+ */
+
+@define-color layer0            rgba(40, 42, 54, 0.85);
+@define-color layer1            rgba(68, 71, 90, 0.72);
+@define-color layer2            rgba(98, 114, 164, 0.96);
+@define-color layer0_border     rgba(98, 114, 164, 0.55);
+@define-color layer1_border     rgba(98, 114, 164, 0.50);
+@define-color divider           rgba(189, 147, 249, 0.35);
+
+@define-color on_surface          #f8f8f2;
+@define-color on_surface_variant  #e6e6e6;
+@define-color outline             #6272a4;
+@define-color outline_variant     #44475a;
+
+@define-color primary             #bd93f9;
+@define-color on_primary          #282a36;
+@define-color primary_container   #44475a;
+@define-color on_primary_container #f8f8f2;
+@define-color secondary_container #44475a;
+@define-color on_secondary_container #f8f8f2;
+@define-color tertiary_container  #6272a4;
+@define-color on_tertiary_container #f8f8f2;
+
+@define-color error               #ff5555;
+@define-color on_error            #282a36;
+@define-color error_container     #7c1f1f;
+@define-color on_error_container  #ffd2cc;
+@define-color scrim               rgba(40, 42, 54, 0.55);

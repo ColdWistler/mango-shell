@@ -70,6 +70,60 @@ pub const THEMES: &[Theme] = &[
         css: include_str!("themes/tokyonight.css"),
         preview: [0x1a1b26, 0x292e42, 0x7aa2f7, 0xbb9af7, 0x9ece6a],
     },
+    Theme {
+        id: "matugen",
+        name: "Matugen (Wallpaper)",
+        css: include_str!("themes/matugen.css"),
+        preview: [0x111417, 0x1a1f24, 0x92cef5, 0xb6c9d8, 0xccc1e9],
+    },
+    Theme {
+        id: "dracula",
+        name: "Dracula",
+        css: include_str!("themes/dracula.css"),
+        preview: [0x282a36, 0x44475a, 0xbd93f9, 0x8be9fd, 0x50fa7b],
+    },
+    Theme {
+        id: "rose-pine",
+        name: "Rose Pine",
+        css: include_str!("themes/rose-pine.css"),
+        preview: [0x191724, 0x26233a, 0xc4a7e7, 0x9ccfd8, 0xebbcba],
+    },
+    Theme {
+        id: "kanagawa",
+        name: "Kanagawa",
+        css: include_str!("themes/kanagawa.css"),
+        preview: [0x1f1f28, 0x2a2a37, 0x7e9cd8, 0x7fb4ca, 0x98bb6c],
+    },
+    Theme {
+        id: "solarized-dark",
+        name: "Solarized Dark",
+        css: include_str!("themes/solarized-dark.css"),
+        preview: [0x002b36, 0x073642, 0x268bd2, 0x2aa198, 0x859900],
+    },
+    Theme {
+        id: "onedark",
+        name: "One Dark",
+        css: include_str!("themes/onedark.css"),
+        preview: [0x21252b, 0x282c34, 0x61afef, 0x56b6c2, 0x98c379],
+    },
+    Theme {
+        id: "everforest",
+        name: "Everforest",
+        css: include_str!("themes/everforest.css"),
+        preview: [0x2d353b, 0x343f44, 0xa7c080, 0x7fbbb3, 0xdbbc7f],
+    },
+    Theme {
+        id: "monokai",
+        name: "Monokai",
+        css: include_str!("themes/monokai.css"),
+        preview: [0x272822, 0x383830, 0x66d9ef, 0xa6e22e, 0xfd971f],
+    },
+    Theme {
+        id: "catppuccin-latte",
+        name: "Catppuccin Latte",
+        css: include_str!("themes/catppuccin-latte.css"),
+        preview: [0xeff1f5, 0xe6e9ef, 0x8839ef, 0x04a5e5, 0x40a02b],
+    },
 ];
 
 /// The theme used when nothing has been chosen yet.

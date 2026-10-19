@@ -1,0 +1,31 @@
+/* Monokai — https://monokai.pro
+ *
+ * Material 3 token overrides layered on top of `src/style.css`.
+ */
+
+@define-color layer0            rgba(39, 40, 34, 0.85);
+@define-color layer1            rgba(56, 56, 48, 0.72);
+@define-color layer2            rgba(73, 72, 62, 0.96);
+@define-color layer0_border     rgba(95, 94, 81, 0.55);
+@define-color layer1_border     rgba(95, 94, 81, 0.50);
+@define-color divider           rgba(102, 217, 239, 0.35);
+
+@define-color on_surface          #f8f8f2;
+@define-color on_surface_variant  #e6e6e2;
+@define-color outline             #75715e;
+@define-color outline_variant     #49483e;
+
+@define-color primary             #66d9ef;
+@define-color on_primary          #272822;
+@define-color primary_container   #49483e;
+@define-color on_primary_container #f8f8f2;
+@define-color secondary_container #49483e;
+@define-color on_secondary_container #f8f8f2;
+@define-color tertiary_container  #75715e;
+@define-color on_tertiary_container #f8f8f2;
+
+@define-color error               #f92672;
+@define-color on_error            #272822;
+@define-color error_container     #7c1438;
+@define-color on_error_container  #ffd9e4;
+@define-color scrim               rgba(39, 40, 34, 0.55);

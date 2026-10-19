@@ -1,0 +1,31 @@
+/* Catppuccin Latte — https://catppuccin.com
+ *
+ * Material 3 token overrides layered on top of `src/style.css`.
+ */
+
+@define-color layer0            rgba(239, 241, 245, 0.85);
+@define-color layer1            rgba(230, 233, 239, 0.72);
+@define-color layer2            rgba(204, 208, 218, 0.96);
+@define-color layer0_border     rgba(156, 160, 176, 0.55);
+@define-color layer1_border     rgba(156, 160, 176, 0.50);
+@define-color divider           rgba(136, 57, 239, 0.35);
+
+@define-color on_surface          #4c4f69;
+@define-color on_surface_variant  #5c5f77;
+@define-color outline             #8c8fa1;
+@define-color outline_variant     #ccd0da;
+
+@define-color primary             #8839ef;
+@define-color on_primary          #eff1f5;
+@define-color primary_container   #ccd0da;
+@define-color on_primary_container #4c4f69;
+@define-color secondary_container #ccd0da;
+@define-color on_secondary_container #4c4f69;
+@define-color tertiary_container  #acb0be;
+@define-color on_tertiary_container #4c4f69;
+
+@define-color error               #d20f39;
+@define-color on_error            #eff1f5;
+@define-color error_container     #7c0a1d;
+@define-color on_error_container  #ffd9dd;
+@define-color scrim               rgba(76, 79, 105, 0.55);
