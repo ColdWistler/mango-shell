@@ -476,8 +476,9 @@ impl SimpleComponent for SettingsModel {
         }
 
         let shape_hint = gtk::Label::new(Some(
-            "Applies to the bar surface and to every fly-out panel. A switch \
-             left off keeps the active panel's own value.",
+            "Applies to the bar surface and to every fly-out panel. Drag a \
+             slider to take over that value — its switch hands it back to \
+             the panel's own setting.",
         ));
         shape_hint.add_css_class("mango-card-note");
         shape_hint.set_xalign(0.0);
@@ -646,6 +647,9 @@ impl SimpleComponent for SettingsModel {
                 if self.syncing.get() {
                     return;
                 }
+                // On: take the slider's position. Off: hand the height back
+                // to the active panel (the slider keeps showing what the
+                // panel uses, ready to be dragged again).
                 self.shape.height = active.then(|| self.height_scale.value() as u32);
                 self.emit_shape(&sender);
             }
@@ -653,24 +657,18 @@ impl SimpleComponent for SettingsModel {
                 if self.syncing.get() {
                     return;
                 }
-                // The slider does nothing until its override is switched on.
-                if self.shape.height.is_some() {
-                    self.shape.height = Some(value);
-                    self.emit_shape(&sender);
-                }
+                // Dragging takes over: the override turns itself on, so the
+                // slider can never be a dead control.
+                self.shape.height = Some(value);
+                set_toggle(&self.syncing, &self.height_switch, true);
+                self.emit_shape(&sender);
             }
             SettingsInput::ToggleRadius(active) => {
                 if self.syncing.get() {
                     return;
                 }
                 if active {
-                    self.shape.radius = Some(self.radius_scale.value() as u32);
-                    // A radius no corner uses is invisible; round the two
-                    // bottom corners so the change lands at once.
-                    if !self.shape.corners.iter().any(|on| *on) {
-                        self.shape.corners = [false, false, true, true];
-                        self.sync_corners();
-                    }
+                    self.activate_radius();
                 } else {
                     self.shape.radius = None;
                 }
@@ -680,19 +678,22 @@ impl SimpleComponent for SettingsModel {
                 if self.syncing.get() {
                     return;
                 }
-                if self.shape.radius.is_some() {
-                    self.shape.radius = Some(value);
-                    self.emit_shape(&sender);
-                }
+                // Same self-activation as the height slider: grabbing the
+                // handle turns the override on at that value.
+                self.activate_radius();
+                self.shape.radius = Some(value);
+                set_toggle(&self.syncing, &self.radius_switch, true);
+                self.emit_shape(&sender);
             }
             SettingsInput::ToggleCorner(index) => {
                 if self.syncing.get() {
                     return;
                 }
-                if self.shape.radius.is_some() {
-                    self.shape.corners[index] = !self.shape.corners[index];
-                    self.emit_shape(&sender);
-                }
+                // Clicking a corner with no override on takes it over too
+                // (and rounds some corner first, so something is visible).
+                self.activate_radius();
+                self.shape.corners[index] = !self.shape.corners[index];
+                self.emit_shape(&sender);
             }
 
             SettingsInput::Reset => {
@@ -834,13 +835,11 @@ impl SettingsModel {
 
         let height = self.shape.height;
         self.height_switch.set_active(height.is_some());
-        self.height_scale.set_sensitive(height.is_some());
         self.height_scale
             .set_value(height.unwrap_or(self.default_height) as f64);
 
         let radius = self.shape.radius;
         self.radius_switch.set_active(radius.is_some());
-        self.radius_scale.set_sensitive(radius.is_some());
         self.radius_scale
             .set_value(radius.unwrap_or(DEFAULT_RADIUS) as f64);
         self.sync_corners();
@@ -848,14 +847,41 @@ impl SettingsModel {
         self.syncing.set(false);
     }
 
-    /// The corner toggles follow the radius switch (they do nothing
-    /// without it) and the saved corner set.
+    /// The corner toggles mirror the saved set. They are always live: with
+    /// no radius override on, clicking one just takes the override over.
     fn sync_corners(&mut self) {
-        let radius_on = self.shape.radius.is_some();
         for (index, button) in self.corners.iter().enumerate() {
-            button.set_sensitive(radius_on);
-            button.set_active(self.shape.corners[index]);
+            set_toggle(&self.syncing, button, self.shape.corners[index]);
         }
+    }
+
+    /// Turn the radius override on at the slider's current value if it is
+    /// off. A radius no corner uses is invisible, so the two bottom corners
+    /// come along — unless the user already picked corners (including none
+    /// at all, which squares the bar off on purpose).
+    fn activate_radius(&mut self) {
+        if self.shape.radius.is_some() {
+            return;
+        }
+        self.shape.radius = Some(self.radius_scale.value() as u32);
+        if !self.shape.corners.iter().any(|on| *on) {
+            self.shape.corners = [false, false, true, true];
+            self.sync_corners();
+        }
+    }
+}
+
+/// Flip a toggle from code without its handler echoing the edit back as a
+/// new one. Nests inside an existing sync: the flag is only cleared by the
+/// sync level that raised it.
+fn set_toggle(syncing: &Rc<Cell<bool>>, button: &gtk::ToggleButton, active: bool) {
+    if button.is_active() == active {
+        return;
+    }
+    let was_syncing = syncing.replace(true);
+    button.set_active(active);
+    if !was_syncing {
+        syncing.set(false);
     }
 }
 
