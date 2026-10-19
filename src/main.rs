@@ -26,6 +26,9 @@
 //!   +-- OverviewModel        (overview.rs)  workspace preview grid — a card
 //!                                          per tag with every window drawn to
 //!                                          scale (bar button or SIGRTMIN+1)
+//!   +-- SettingsModel        (settings.rs)  bar customisation: reorder the
+//!                                          bar's widgets, override its height
+//!                                          and corner rounding (dashboard tile)
 //! ```
 //!
 //! Why the invisible root? A GTK application needs a window to stay alive, and
@@ -41,6 +44,7 @@ mod launcher;
 mod mango;
 mod overview;
 mod panel;
+mod settings;
 mod shortcuts;
 mod theme;
 mod wallpaper;
@@ -59,6 +63,7 @@ use launcher::{LauncherInput, LauncherModel};
 use overview::{OverviewInput, OverviewModel};
 use panel::{PanelOutput, PanelPickerInput, PanelPickerModel};
 use relm4::prelude::*;
+use settings::{LayoutEntry, SettingsInit, SettingsInput, SettingsModel, SettingsOutput, Shape};
 use shortcuts::{ShortcutsInput, ShortcutsModel};
 use theme::{ThemeOutput, ThemePickerInput, ThemePickerModel};
 use wallpaper::{WallpaperInit, WallpaperInput, WallpaperModel};
@@ -85,12 +90,21 @@ struct Shell {
     shortcuts: Controller<ShortcutsModel>,
     /// The workspace preview grid, opened from the bar or a keybind.
     overview: Controller<OverviewModel>,
+    /// The settings app: bar-widget layout and bar-shape overrides, opened
+    /// from the dashboard's Settings tile.
+    settings: Controller<SettingsModel>,
     /// The wallpaper currently shown, restored from disk at startup.
     current: Option<PathBuf>,
     /// The active theme, restored from disk at startup.
     theme: &'static theme::Theme,
     /// The active panel (bar layout), restored from disk at startup.
     panel: &'static panel::Panel,
+    /// The settings app's widget layout for the bar, restored at startup.
+    /// Bars are built from it; every change is broadcast and persisted.
+    layout: Vec<LayoutEntry>,
+    /// The settings app's bar-shape overrides (height / corner radius), or
+    /// `None` while the panel's own shape is in force.
+    shape: Option<Shape>,
     /// The last monitor state per connector, so rebuilt bars can be
     /// repopulated and the overview always has geometry to scale against.
     monitors: HashMap<String, MonitorView>,
@@ -137,6 +151,13 @@ enum ShellInput {
     SetWallpaper(PathBuf),
     /// Re-read `style.css` after a wallpaper change regenerated it.
     ReloadCss,
+    /// The settings app reordered / hid bar widgets: persist and broadcast.
+    LayoutChanged(Vec<LayoutEntry>),
+    /// The settings app changed the bar-shape overrides: persist, reload the
+    /// stylesheet, and re-gap the fly-outs (the bar may have grown).
+    ShapeChanged(Shape),
+    /// The settings app's Reset was pressed: defaults everywhere, UI included.
+    ResetSettings,
 }
 
 #[relm4::component(pub)]
@@ -167,8 +188,11 @@ impl SimpleComponent for Shell {
         // it can be reloaded in place when the theme or wallpaper changes.
         let theme = theme::load_current();
         let panel = panel::load_current();
+        // The settings app's persisted state: which widgets sit where on the
+        // bar, and any explicit height / radius overrides.
+        let (layout, shape) = settings::load();
         let css = gtk::CssProvider::new();
-        css.load_from_data(&load_css(panel, theme));
+        css.load_from_data(&load_css(panel, theme, shape));
         if let Some(display) = gdk::Display::default() {
             gtk::style_context_add_provider_for_display(
                 &display,
@@ -234,6 +258,23 @@ impl SimpleComponent for Shell {
         // The workspace overview watches Mango's IPC itself (like the bar's
         // tag dispatches), so it only needs the state pushes and its toggle.
         let overview = OverviewModel::builder().launch(()).detach();
+
+        // The settings app shares the fly-out recipe. It edits two things and
+        // pushes every change up live: the widget layout (the shell saves it
+        // and broadcasts it to every bar) and the bar shape (the shell saves
+        // it and reloads the stylesheet).
+        let settings = SettingsModel::builder()
+            .launch(SettingsInit {
+                wallpaper: current.clone(),
+                layout: layout.clone(),
+                shape,
+                default_height: panel.height as u32,
+            })
+            .forward(sender.input_sender(), |output| match output {
+                SettingsOutput::LayoutChanged(layout) => ShellInput::LayoutChanged(layout),
+                SettingsOutput::ShapeChanged(shape) => ShellInput::ShapeChanged(shape),
+                SettingsOutput::Reset => ShellInput::ResetSettings,
+            });
         let has_mango = mango::has_mango_session();
         
         let model = Shell {
@@ -246,9 +287,12 @@ impl SimpleComponent for Shell {
             panel_picker,
             shortcuts,
             overview,
+            settings,
             current,
             theme,
             panel,
+            layout,
+            shape,
             monitors: HashMap::new(),
             clients: Vec::new(),
             css,
@@ -289,6 +333,8 @@ impl SimpleComponent for Shell {
                         monitor: monitor.clone(),
                         theme: self.theme.id.to_string(),
                         panel: self.panel,
+                        layout: self.layout.clone(),
+                        shape: self.shape,
                     })
                     // The bar's buttons toggle the shell's overlays, and its
                     // theme menu applies themes.
@@ -381,11 +427,11 @@ impl SimpleComponent for Shell {
             }
 
             ShellInput::OpenSettings => {
-                // The settings app grows out of this dashboard on the
-                // `settings` branch; until it exists there is nothing to
-                // open, so the tile just closes the panel again.
+                // The dashboard's Settings tile leads here. Fly-outs from the
+                // same corner swap rather than stack (same rule as the
+                // launcher / dashboard pair), so close the dashboard first.
                 self.dashboard.emit(DashboardInput::Hide);
-                eprintln!("mango-shell: settings app is not built yet");
+                self.settings.emit(SettingsInput::Toggle);
             }
 
             ShellInput::ToggleWallpaper => self.carousel.emit(CarouselInput::Toggle),
@@ -417,7 +463,7 @@ impl SimpleComponent for Shell {
                 // spliced into the string the provider was built from.
                 let theme = self.theme;
                 let panel = self.panel;
-                self.css.load_from_data(&load_css(panel, theme));
+                self.css.load_from_data(&load_css(panel, theme, self.shape));
                 // Keep the gallery highlight...
                 self.theme_picker
                     .emit(ThemePickerInput::SetCurrent(id.clone()));
@@ -437,10 +483,14 @@ impl SimpleComponent for Shell {
                 // structure) applies.
                 let panel = self.panel;
                 let theme = self.theme;
-                self.css.load_from_data(&load_css(panel, theme));
+                self.css.load_from_data(&load_css(panel, theme, self.shape));
                 // Keep the gallery highlight in sync.
                 self.panel_picker
                     .emit(PanelPickerInput::SetCurrent(id.clone()));
+                // The Height slider's "off" position follows the active
+                // panel's own height, so tell the settings app about it too.
+                self.settings
+                    .emit(SettingsInput::PanelHeight(panel.height as u32));
                 // The bar may float or shrink, so keep the fly-outs hanging
                 // just below it.
                 set_flyout_gap(self, self.panel);
@@ -472,6 +522,8 @@ impl SimpleComponent for Shell {
                     .emit(ThemePickerInput::Banner(Some(path.clone())));
                 self.shortcuts
                     .emit(ShortcutsInput::Banner(Some(path.clone())));
+                self.settings
+                    .emit(SettingsInput::Banner(Some(path.clone())));
                 // Let an optional hook (matugen, pywal, …) re-derive the
                 // palette, then reload the stylesheet once it finishes.
                 let sender = sender.clone();
@@ -481,7 +533,55 @@ impl SimpleComponent for Shell {
                 });
             }
 
-            ShellInput::ReloadCss => self.css.load_from_data(&load_css(self.panel, self.theme)),
+            ShellInput::ReloadCss => {
+                self.css
+                    .load_from_data(&load_css(self.panel, self.theme, self.shape))
+            }
+
+            ShellInput::LayoutChanged(layout) => {
+                // The settings app is the only writer: keep our copy for new
+                // bars, persist, then rearrange every bar that is up.
+                self.layout = layout.clone();
+                settings::save(&self.layout, self.shape);
+                for controller in self.bars.values() {
+                    controller.emit(BarInput::SetLayout(layout.clone()));
+                }
+            }
+
+            ShellInput::ShapeChanged(shape) => {
+                // A shape with nothing overridden in it is "no overrides".
+                self.shape = (!shape.is_default()).then_some(shape);
+                settings::save(&self.layout, self.shape);
+                let panel = self.panel;
+                let theme = self.theme;
+                self.css.load_from_data(&load_css(panel, theme, self.shape));
+                for controller in self.bars.values() {
+                    controller.emit(BarInput::SetShape(self.shape));
+                }
+                // The bar may have grown or shrunk: the fly-outs hang below
+                // it, so their gap must follow.
+                set_flyout_gap(self, self.panel);
+            }
+
+            ShellInput::ResetSettings => {
+                // Defaults in both halves: the stock widget order and no
+                // shape overrides (the panel profile rules again).
+                self.layout = settings::default_layout();
+                self.shape = None;
+                settings::save(&self.layout, None);
+                let panel = self.panel;
+                let theme = self.theme;
+                self.css.load_from_data(&load_css(panel, theme, None));
+                for controller in self.bars.values() {
+                    controller.emit(BarInput::SetLayout(self.layout.clone()));
+                    controller.emit(BarInput::SetShape(None));
+                }
+                set_flyout_gap(self, self.panel);
+                self.settings.emit(SettingsInput::SetState {
+                    layout: self.layout.clone(),
+                    shape: None,
+                });
+            }
         }
     }
 }
@@ -635,17 +735,23 @@ fn find_monitor(name: &str) -> Option<gdk::Monitor> {
 }
 
 /// Keep the fly-out surfaces (launcher, dashboard, theme and panel galleries,
-/// shortcut reference) hanging just below the active panel's bar. Each panel
-/// has its own height and may float, so the gap must follow it when the panel
+/// shortcut reference, settings app) hanging just below the active panel's
+/// bar. Each panel has its own height and may float — and the settings app's
+/// Height override can pin the bar to something else entirely — so the gap is
+/// computed from the *effective* height and re-applied whenever either
 /// changes. The wallpaper carousel is fullscreen and needs no gap.
 fn set_flyout_gap(shell: &Shell, panel: &panel::Panel) {
-    let gap = panel.flyout_gap();
+    let gap = match shell.shape.and_then(|shape| shape.height) {
+        Some(height) => panel.margin_top + height as i32 + 6,
+        None => panel.flyout_gap(),
+    };
     for window in [
         shell.launcher.widget(),
         shell.dashboard.widget(),
         shell.theme_picker.widget(),
         shell.panel_picker.widget(),
         shell.shortcuts.widget(),
+        shell.settings.widget(),
     ] {
         window.set_margin(Edge::Top, gap);
     }
@@ -659,7 +765,11 @@ fn set_flyout_gap(shell: &Shell, panel: &panel::Panel) {
 /// palette from `~/.config/mango-shell/style.css` so the wallpaper-derived
 /// colours apply. For other themes, do not apply that universal override
 /// (so switching themes actually changes the appearance).
-fn load_css(panel: &panel::Panel, theme: &theme::Theme) -> String {
+///
+/// The settings app's **shape overrides** go in last of all, so their
+/// `window.mango-bar.mango-user-shaped …` selectors win ties against the
+/// panel profile and the theme (equal specificity, later rule).
+fn load_css(panel: &panel::Panel, theme: &theme::Theme, shape: Option<Shape>) -> String {
     let mut css = String::from(include_str!("style.css"));
 
     css.push('\n');
@@ -676,6 +786,11 @@ fn load_css(panel: &panel::Panel, theme: &theme::Theme) -> String {
                 css.push_str(&extra);
             }
         }
+    }
+
+    if let Some(shape) = shape {
+        css.push('\n');
+        css.push_str(&shape.css());
     }
 
     css

@@ -4,15 +4,19 @@
 //! (`TagsModel`, `ClockModel`, the tray and the system indicators) and
 //! forwards messages between them and the compositor.
 //!
-//! Which widgets sit where is decided by the active **panel**
-//! ([`crate::panel`]), a layout profile ported from
-//! [adi1090x/polybar-themes](https://github.com/adi1090x/polybar-themes). The
-//! clusters (launcher buttons, tags, clock, tray, system indicators, monitor
-//! name) are built here imperatively, each wrapped the same way as the old
-//! fixed bar, then distributed into the `Start` / `Center` / `End` slots,
-//! with optional [`Sep`] separators between them. The `panel-<id>` class on
-//! the window lets each panel's CSS restyle everything (pill vs flat blocks,
-//! height, radius, palette).
+//! Which widgets sit where is decided by two things: the active **panel**
+//! ([`crate::panel`]) — a layout profile ported from
+//! [adi1090x/polybar-themes](https://github.com/adi1090x/polybar-themes),
+//! which brings the palette, height and separator style — and the widget
+//! **layout** ([`crate::settings`]) the settings app edits: every widget is
+//! built once, keyed by [`WidgetId`], and arranged into the `Start` /
+//! `Center` / `End` slots with optional [`Sep`] separators between them.
+//! The `panel-<id>` class on the window lets each panel's CSS restyle
+//! everything (pill vs flat blocks, height, radius, palette), and the
+//! `mango-user-shaped` class marks a bar the user has given explicit shape
+//! overrides, so those win ties against the panel's rules.
+
+use std::collections::HashMap;
 
 use gtk::gdk;
 use gtk::prelude::*;
@@ -21,6 +25,7 @@ use relm4::prelude::*;
 
 use crate::mango::{self, TagView};
 use crate::panel::{Panel, Sep, Slot};
+use crate::settings::{LayoutEntry, Shape};
 use crate::widgets::brightness::BrightnessModel;
 use crate::widgets::clock::ClockModel;
 use crate::widgets::music::MusicModel;
@@ -41,6 +46,102 @@ pub struct BarInit {
     pub theme: String,
     /// The panel (bar layout) this bar is built from.
     pub panel: &'static Panel,
+    /// The widget layout the settings app last applied.
+    pub layout: Vec<LayoutEntry>,
+    /// The user's bar-shape overrides, when they have one.
+    pub shape: Option<Shape>,
+}
+
+/// One movable widget on the bar.
+///
+/// The bar builds every widget once and arranges them according to the
+/// layout the settings app edits ([`crate::settings`]); the id is the stable
+/// name persisted in `~/.config/mango-shell/settings.conf`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WidgetId {
+    Dashboard,
+    Theme,
+    Panels,
+    Overview,
+    Shortcuts,
+    Music,
+    Visualizer,
+    Tags,
+    Resources,
+    Clock,
+    Wifi,
+    Volume,
+    Brightness,
+    Power,
+    Tray,
+}
+
+impl WidgetId {
+    /// Every widget, in default order.
+    pub const ALL: [WidgetId; 15] = [
+        WidgetId::Dashboard,
+        WidgetId::Theme,
+        WidgetId::Panels,
+        WidgetId::Overview,
+        WidgetId::Shortcuts,
+        WidgetId::Music,
+        WidgetId::Visualizer,
+        WidgetId::Tags,
+        WidgetId::Resources,
+        WidgetId::Clock,
+        WidgetId::Wifi,
+        WidgetId::Volume,
+        WidgetId::Brightness,
+        WidgetId::Power,
+        WidgetId::Tray,
+    ];
+
+    /// The name shown in the settings app.
+    pub fn label(self) -> &'static str {
+        match self {
+            WidgetId::Dashboard => "Dashboard",
+            WidgetId::Theme => "Themes",
+            WidgetId::Panels => "Panel layout",
+            WidgetId::Overview => "Overview",
+            WidgetId::Shortcuts => "Shortcuts",
+            WidgetId::Music => "Now playing",
+            WidgetId::Visualizer => "Visualizer",
+            WidgetId::Tags => "Workspaces",
+            WidgetId::Resources => "Resources",
+            WidgetId::Clock => "Clock",
+            WidgetId::Wifi => "Wi-Fi",
+            WidgetId::Volume => "Volume",
+            WidgetId::Brightness => "Brightness",
+            WidgetId::Power => "Power",
+            WidgetId::Tray => "System tray",
+        }
+    }
+
+    /// The stable key persisted on disk.
+    pub fn key(self) -> &'static str {
+        match self {
+            WidgetId::Dashboard => "dashboard",
+            WidgetId::Theme => "theme",
+            WidgetId::Panels => "panels",
+            WidgetId::Overview => "overview",
+            WidgetId::Shortcuts => "shortcuts",
+            WidgetId::Music => "music",
+            WidgetId::Visualizer => "visualizer",
+            WidgetId::Tags => "tags",
+            WidgetId::Resources => "resources",
+            WidgetId::Clock => "clock",
+            WidgetId::Wifi => "wifi",
+            WidgetId::Volume => "volume",
+            WidgetId::Brightness => "brightness",
+            WidgetId::Power => "power",
+            WidgetId::Tray => "tray",
+        }
+    }
+
+    /// Look a widget up by its persisted key.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|id| id.key() == key)
+    }
 }
 
 #[derive(Debug)]
@@ -51,6 +152,11 @@ pub enum BarInput {
     SwitchTag(TagsOutput),
     /// The active theme changed; sync the popover checkmark.
     SetTheme(String),
+    /// A new widget layout from the settings app; rebuild the slot boxes.
+    SetLayout(Vec<LayoutEntry>),
+    /// The bar-shape overrides changed: toggle the `mango-user-shaped` class
+    /// the stylesheet's override block keys off.
+    SetShape(Option<Shape>),
 }
 
 /// Messages the bar sends up to the shell.
@@ -71,6 +177,8 @@ pub enum BarOutput {
 }
 
 pub struct BarModel {
+    /// The root, so `update` can toggle the user-shape class.
+    window: gtk::Window,
     tags: Controller<TagsModel>,
     // The following components are wired into the slot boxes during `init`;
     // their Controllers are kept here (and in the view it is enough to hold
@@ -95,7 +203,14 @@ pub struct BarModel {
     #[allow(dead_code)]
     music: Controller<MusicModel>,
     theme_button: Controller<ThemeButtonModel>,
-    /// The three CentreBox slots, already populated from the panel layout.
+    /// Every movable widget, built once and keyed: the layout decides where
+    /// (and whether) each one appears.
+    map: HashMap<WidgetId, gtk::Widget>,
+    /// The layout the settings app last applied.
+    entries: Vec<LayoutEntry>,
+    /// Separator style between consecutive widgets inside a slot.
+    sep: Sep,
+    /// The three CentreBox slots, filled from the layout by `rebuild`.
     start_box: gtk::Box,
     center_box: gtk::Box,
     end_box: gtk::Box,
@@ -230,61 +345,52 @@ impl SimpleComponent for BarModel {
             },
         );
 
-        // --- Build the clusters exactly like the old fixed bar did, so every
-        // panel starts from the same building blocks and CSS handles the
-        // rest. ----------------------------------------------------------
+        // --- Every movable widget, built once and keyed by id: the layout
+        // the settings app edits decides where (and whether) each one shows
+        // up (see `crate::settings`). The default arrangement reproduces the
+        // old fixed bar: launcher buttons, music and the visualizer on the
+        // left, workspaces centred, system widgets on the right.
+        let mut map: HashMap<WidgetId, gtk::Widget> = HashMap::new();
+        map.insert(WidgetId::Dashboard, dashboard_button.upcast());
+        map.insert(
+            WidgetId::Theme,
+            theme_button.widget().clone().upcast::<gtk::Widget>(),
+        );
+        map.insert(WidgetId::Panels, panels_button.upcast());
+        map.insert(WidgetId::Overview, overview_button.upcast());
+        map.insert(WidgetId::Shortcuts, shortcuts_button.upcast());
+        map.insert(
+            WidgetId::Music,
+            music.widget().clone().upcast::<gtk::Widget>(),
+        );
+        map.insert(
+            WidgetId::Visualizer,
+            visualizer.widget().clone().upcast::<gtk::Widget>(),
+        );
+        map.insert(WidgetId::Tags, tags.widget().clone().upcast::<gtk::Widget>());
+        map.insert(
+            WidgetId::Resources,
+            resources.widget().clone().upcast::<gtk::Widget>(),
+        );
+        map.insert(WidgetId::Clock, clock.widget().clone().upcast::<gtk::Widget>());
+        map.insert(WidgetId::Wifi, wifi.widget().clone().upcast::<gtk::Widget>());
+        map.insert(
+            WidgetId::Volume,
+            volume.widget().clone().upcast::<gtk::Widget>(),
+        );
+        map.insert(
+            WidgetId::Brightness,
+            brightness.widget().clone().upcast::<gtk::Widget>(),
+        );
+        map.insert(WidgetId::Power, power.widget().clone().upcast::<gtk::Widget>());
+        map.insert(WidgetId::Tray, tray.widget().clone().upcast::<gtk::Widget>());
 
-        // --- Build the requested layout ------------------------------
-        // Left: dashboard, theme, panel button, music player, cava
-        let left = horizontal_cluster(&[], 6, gtk::Align::Start);
-        left.append(&dashboard_button);
-        left.append(theme_button.widget());
-        left.append(&panels_button);
-        left.append(&overview_button);
-        left.append(&shortcuts_button);
-        left.append(music.widget());
-        left.append(visualizer.widget());
-
-        // Center: workspaces
-        let center = horizontal_cluster(&["mango-group"], 0, gtk::Align::Center);
-        center.append(tags.widget());
-
-        // Right: system resource, date/time, wifi, volume, brightness, battery
-        // Group system controls closer to save space
-        let right = horizontal_cluster(&["mango-group", "mango-system"], 2, gtk::Align::End);
-        right.append(resources.widget());
-        right.append(clock.widget());
-        right.append(wifi.widget());
-        right.append(volume.widget());
-        right.append(brightness.widget());
-        right.append(power.widget());
-        let right_extra = horizontal_cluster(&[], 4, gtk::Align::End);
-        right_extra.append(tray.widget());
-
-        // --- Distribute into slots directly for this custom layout ----------
-        let members: Vec<(Slot, gtk::Widget)> = vec![
-            (Slot::Start, left.upcast()),
-            (Slot::Center, center.upcast()),
-            (Slot::End, right.upcast()),
-            (Slot::End, right_extra.upcast()),
-        ];
-
-        let mut start = Vec::new();
-        let mut center = Vec::new();
-        let mut end = Vec::new();
-        for (slot, widget) in members {
-            match slot {
-                Slot::Start => start.push(widget),
-                Slot::Center => center.push(widget),
-                Slot::End => end.push(widget),
-            }
-        }
-
-        let start_box = assemble_slot("mango-slot-start", start, panel.sep, gtk::Align::Start);
-        let center_box = assemble_slot("mango-slot-center", center, panel.sep, gtk::Align::Center);
-        let end_box = assemble_slot("mango-slot-end", end, panel.sep, gtk::Align::End);
+        let start_box = slot_box("mango-slot-start", gtk::Align::Start);
+        let center_box = slot_box("mango-slot-center", gtk::Align::Center);
+        let end_box = slot_box("mango-slot-end", gtk::Align::End);
 
         let model = BarModel {
+            window: root.clone(),
             tags,
             clock,
             tray,
@@ -296,6 +402,9 @@ impl SimpleComponent for BarModel {
             visualizer,
             music,
             theme_button,
+            map,
+            entries: init.layout,
+            sep: panel.sep,
             start_box,
             center_box,
             end_box,
@@ -307,12 +416,21 @@ impl SimpleComponent for BarModel {
         // after `view_output!` because the view macro replaces the css classes
         // list on the root.
         root.add_css_class(&format!("panel-{}", panel.id));
+        // The settings app's shape overrides are scoped to this class, so
+        // they can win ties against the panel's own radius / height rules
+        // (see `settings::Shape::css`).
+        if init.shape.is_some() {
+            root.add_css_class("mango-user-shaped");
+        }
 
         // Floating panels inset themselves from the top and the screen edges
         // (full-width panels have `margin_side == 0`).
         root.set_margin(Edge::Top, panel.margin_top);
         root.set_margin(Edge::Left, panel.margin_side);
         root.set_margin(Edge::Right, panel.margin_side);
+
+        // Lay the widgets out for the first time, from the saved layout.
+        model.rebuild();
 
         // Child windows are not presented automatically.
         root.set_visible(true);
@@ -329,18 +447,68 @@ impl SimpleComponent for BarModel {
                 }
             }
             BarInput::SetTheme(id) => self.theme_button.emit(ThemeButtonInput::SetTheme(id)),
+            BarInput::SetLayout(layout) => {
+                self.entries = layout;
+                self.rebuild();
+            }
+            BarInput::SetShape(shape) => {
+                if shape.is_some() {
+                    self.window.add_css_class("mango-user-shaped");
+                } else {
+                    self.window.remove_css_class("mango-user-shaped");
+                }
+            }
         }
     }
 }
 
-/// A horizontal box with the given CSS classes, centred vertically so the
-/// clusters line up in a short bar.
-fn horizontal_cluster(classes: &[&str], spacing: i32, halign: gtk::Align) -> gtk::Box {
-    let cluster = gtk::Box::new(gtk::Orientation::Horizontal, spacing);
-    cluster.set_css_classes(classes);
-    cluster.set_halign(halign);
-    cluster.set_valign(gtk::Align::Center);
-    cluster
+impl BarModel {
+    /// Re-lay the three slot boxes out from `entries`: visible widgets in
+    /// order, Start / Center / End, with `panel.sep` separators between them.
+    ///
+    /// The Center and End slots keep the cluster classes the fixed bar gave
+    /// them (`mango-group`, plus `mango-system` on the right), so the panels'
+    /// pill CSS still finds its groups even though the widgets inside are
+    /// now individually movable.
+    fn rebuild(&self) {
+        for (slot, classes) in [
+            (Slot::Start, &["mango-slot-start"][..]),
+            (Slot::Center, &["mango-slot-center", "mango-group"][..]),
+            (
+                Slot::End,
+                &["mango-slot-end", "mango-group", "mango-system"][..],
+            ),
+        ] {
+            let container = match slot {
+                Slot::Start => &self.start_box,
+                Slot::Center => &self.center_box,
+                Slot::End => &self.end_box,
+            };
+            while let Some(child) = container.first_child() {
+                container.remove(&child);
+            }
+            container.set_css_classes(classes);
+
+            let members: Vec<gtk::Widget> = self
+                .entries
+                .iter()
+                .filter(|entry| entry.slot == slot && entry.visible)
+                .filter_map(|entry| self.map.get(&entry.id))
+                .cloned()
+                .collect();
+            append_members(container, &members, self.sep);
+        }
+    }
+}
+
+/// An empty slot box: one horizontal row, centred vertically so the widgets
+/// line up in a short bar.
+fn slot_box(class: &str, halign: gtk::Align) -> gtk::Box {
+    let slot = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    slot.set_halign(halign);
+    slot.set_valign(gtk::Align::Center);
+    slot.set_css_classes(&[class]);
+    slot
 }
 
 /// Edge of the dashboard button's Arch mark, in pixels.
@@ -387,15 +555,14 @@ pub fn arch_logo(size: i32) -> gtk::Image {
     image
 }
 
-/// Chain `members` into one slot box with 6px spacing and `panel.sep`
-/// separators between consecutive members.
+/// Chain `members` into `slot` with `sep` separators between consecutive
+/// members.
 ///
 /// Each separator tracks the member *following* it, so a widget that hides
 /// itself (the now-playing pill while nothing plays, the visualizer without
 /// `cava`) takes its leading separator with it instead of leaving a dangling
 /// line at the edge of the slot.
-fn assemble_slot(class: &str, members: Vec<gtk::Widget>, sep: Sep, halign: gtk::Align) -> gtk::Box {
-    let slot = horizontal_cluster(&[class], 6, halign);
+fn append_members(slot: &gtk::Box, members: &[gtk::Widget], sep: Sep) {
     for (index, member) in members.iter().enumerate() {
         if index > 0
             && let Some(separator) = separator(sep)
@@ -408,7 +575,6 @@ fn assemble_slot(class: &str, members: Vec<gtk::Widget>, sep: Sep, halign: gtk::
         }
         slot.append(member);
     }
-    slot
 }
 
 /// The separator widget for a [`Sep`] style, if it has one.

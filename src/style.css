@@ -1589,3 +1589,219 @@ window.mango-overview {
     color: @on_surface;
     font-size: 13px;
 }
+
+/* --- Settings app -------------------------------------------------------
+ * The panel the dashboard's Settings tile opens (src/settings.rs). Two
+ * sections: Bar widgets — every bar widget as a row you can reorder (arrows),
+ * move between the left / centre / right slots (chip), and hide (eye) — and
+ * Bar shape — an optional height override plus an optional corner radius with
+ * per-corner control, applied to the bar surface and every fly-out panel.
+ * Edits apply live: the shell persists each one and the running bars repaint
+ * in place. The panel keeps the flyout-card silhouette so it reads as one of
+ * the family, just wider. */
+
+.mango-settings-panel {
+    min-width: 640px;
+}
+
+.mango-settings-title {
+    color: @on_surface;
+    font-size: 17px;
+    font-weight: 600;
+}
+
+/* The header above each group of controls. */
+.mango-settings-section {
+    color: @on_surface_variant;
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 6px;
+}
+
+/* --- Bar widgets section ------------------------------------------------ */
+
+.mango-widget-row {
+    background-color: alpha(@on_surface, 0.05);
+    border: 1px solid @outline_variant;
+    padding: 6px 8px;
+    min-height: 30px;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.mango-widget-row:hover {
+    background-color: alpha(@on_surface, 0.08);
+    border-color: alpha(@primary, 0.45);
+}
+
+.mango-widget-row label {
+    color: @on_surface;
+    font-size: 13px;
+}
+
+/* The slot chip: click to walk a widget Left → Centre → Right. */
+window.mango-flyout button.mango-slot-chip {
+    background-color: transparent;
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface_variant;
+    padding: 3px 10px;
+    min-height: 18px;
+    min-width: 58px;
+    font-size: 11px;
+    font-weight: 600;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+window.mango-flyout button.mango-slot-chip:hover {
+    background-color: alpha(@primary, 0.18);
+    border-color: @primary;
+    color: @on_surface;
+}
+
+/* The eye: checked = the widget is on the bar. */
+window.mango-flyout togglebutton.mango-visible-toggle {
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    color: alpha(@on_surface_variant, 0.55);
+    padding: 4px;
+    min-height: 20px;
+    min-width: 20px;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+window.mango-flyout togglebutton.mango-visible-toggle:hover {
+    background-color: alpha(@on_surface, 0.10);
+    color: @on_surface;
+}
+
+window.mango-flyout togglebutton.mango-visible-toggle:checked {
+    color: @primary;
+}
+
+/* The row-order arrows. */
+window.mango-flyout button.mango-move-button {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface_variant;
+    padding: 4px;
+    min-height: 20px;
+    min-width: 20px;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+window.mango-flyout button.mango-move-button:hover {
+    background-color: alpha(@on_surface, 0.10);
+    color: @on_surface;
+}
+
+window.mango-flyout button.mango-move-button:disabled {
+    color: alpha(@on_surface_variant, 0.30);
+}
+
+/* --- Bar shape section -------------------------------------------------- */
+
+.mango-shape-row {
+    min-height: 26px;
+}
+
+.mango-shape-row > label {
+    color: @on_surface;
+    font-size: 13px;
+}
+
+/* The "use this override" chip: checked = the override is in force. */
+window.mango-flyout togglebutton.mango-override-switch {
+    background-color: alpha(@on_surface, 0.06);
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface_variant;
+    padding: 3px 12px;
+    min-height: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+window.mango-flyout togglebutton.mango-override-switch:checked {
+    background-color: alpha(@primary, 0.22);
+    border-color: @primary;
+    color: @on_surface;
+}
+
+/* The four corner toggles, glyphed the way they sit on screen. */
+window.mango-flyout togglebutton.mango-corner-button {
+    background-color: alpha(@on_surface, 0.06);
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface_variant;
+    padding: 4px 10px;
+    min-height: 22px;
+    min-width: 28px;
+    font-size: 14px;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+window.mango-flyout togglebutton.mango-corner-button:hover {
+    border-color: alpha(@primary, 0.55);
+}
+
+window.mango-flyout togglebutton.mango-corner-button:checked {
+    background-color: alpha(@primary, 0.22);
+    border-color: @primary;
+    color: @on_surface;
+}
+
+/* The two sliders (height, corner radius). */
+window.mango-flyout scale.mango-shape-slider trough {
+    background-color: alpha(@on_surface, 0.10);
+    border: none;
+    border-radius: 0;
+    min-height: 6px;
+}
+
+window.mango-flyout scale.mango-shape-slider highlight {
+    background-color: @primary;
+    border-radius: 0;
+}
+
+window.mango-flyout scale.mango-shape-slider slider {
+    background-color: @on_surface;
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    min-width: 12px;
+    min-height: 16px;
+}
+
+window.mango-flyout scale.mango-shape-slider value {
+    color: @on_surface_variant;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 36px;
+}
+
+/* Reset: a quiet button that only shows its teeth on hover. */
+window.mango-flyout button.mango-settings-reset {
+    background-color: transparent;
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface_variant;
+    padding: 8px 16px;
+    min-height: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+window.mango-flyout button.mango-settings-reset:hover {
+    background-color: alpha(@error, 0.14);
+    border-color: @error;
+    color: @on_surface;
+}
