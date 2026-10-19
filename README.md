@@ -299,8 +299,9 @@ floats over the window you are working in. It enumerates every visible
 highlighted one on Enter or click. The card follows HyDE's launchers: the
 current wallpaper on top, a pill search field and accent-highlighted rows.
 
-Open it either with the Arch-logo **launcher button** at the left end of the
-bar, or from a keybind in `~/.config/mango/config.conf`:
+Open it either through the **dashboard** — the Arch-logo button at the left
+end of the bar opens a small panel whose *Applications* tile hands off to the
+launcher — or from a keybind in `~/.config/mango/config.conf`:
 
 ```ini
 bind=SUPER,d,spawn,pkill -SIGUSR1 mango-shell
@@ -527,7 +528,7 @@ src/
   bar.rs            BarModel: one Top-layer layer surface per monitor. Builds
                     the widget clusters and distributes them into the three
                     CentreBox slots according to the active panel (src/panel.rs).
-                    Its buttons forward launcher/wallpaper/theme/panel toggles
+                    Its buttons forward dashboard/wallpaper/theme/panel toggles
                     to the shell.
   anim.rs           Shared tweening: fade-in, a landing spring, and the popover
                     open animation. GTK4 can't scale widgets from CSS, so these
@@ -538,7 +539,11 @@ src/
                     landing spring), plus the wallpaper banner header.
   launcher.rs       LauncherModel: an Overlay-layer fly-out panel. Searches
                     .desktop entries with gio::AppInfo; toggled via SIGUSR1 or
-                    the bar button.
+                    the dashboard's Applications tile.
+  dashboard.rs      DashboardModel: the fly-out behind the bar's Arch mark —
+                    a wallpaper-topped card with two tiles, Applications
+                    (hands off to the launcher) and Settings (the seam the
+                    settings app grows into).
   wallpaper.rs      WallpaperModel: one Background-layer surface per monitor
                     showing the current image (cover, full-screen behind the
                     bar). WallpaperPickerModel: a fly-out thumbnail grid whose

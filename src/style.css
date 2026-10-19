@@ -147,8 +147,8 @@ window.mango-bar button.mango-icon-button:active {
     background-color: alpha(@on_surface, 0.16);
 }
 
-/* The app launcher: the Arch mark with no chip behind it. */
-window.mango-bar button.mango-launcher-button {
+/* The dashboard: the Arch mark with no chip behind it. */
+window.mango-bar button.mango-dashboard-button {
     min-width: 32px;
     min-height: 32px;
     padding: 0;
@@ -159,7 +159,7 @@ window.mango-bar button.mango-launcher-button {
     -gtk-icon-size: 18px;
 }
 
-window.mango-bar button.mango-launcher-button:hover {
+window.mango-bar button.mango-dashboard-button:hover {
     background: none;
 }
 
@@ -524,6 +524,48 @@ window.mango-flyout row:selected {
 
 window.mango-flyout row:selected label {
     color: @on_primary;
+    font-weight: 600;
+}
+
+/* --- Dashboard ---------------------------------------------------------
+ * The front door behind the bar's Arch mark: a small card holding the
+ * Applications tile (hands off to the launcher above) and the Settings tile
+ * (the settings app this branch grows). The tiles are big, outlined blocks so
+ * they read as doors rather than list rows. */
+
+.mango-dashboard-panel {
+    min-width: 340px;
+}
+
+.mango-dashboard-title {
+    color: @on_surface;
+    font-size: 17px;
+    font-weight: 600;
+}
+
+window.mango-flyout button.mango-dashboard-tile {
+    background-color: alpha(@on_surface, 0.06);
+    border: 1px solid @outline_variant;
+    border-radius: 0;
+    box-shadow: none;
+    color: @on_surface;
+    padding: 20px 18px 16px;
+    min-width: 150px;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+window.mango-flyout button.mango-dashboard-tile:hover {
+    background-color: alpha(@on_surface, 0.10);
+    border-color: @primary;
+}
+
+window.mango-flyout button.mango-dashboard-tile:active {
+    background-color: alpha(@primary, 0.22);
+    border-color: @primary;
+}
+
+window.mango-flyout button.mango-dashboard-tile label {
+    font-size: 14px;
     font-weight: 600;
 }
 

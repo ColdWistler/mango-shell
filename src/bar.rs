@@ -56,8 +56,8 @@ pub enum BarInput {
 /// Messages the bar sends up to the shell.
 #[derive(Debug)]
 pub enum BarOutput {
-    /// The launcher button was pressed.
-    ToggleLauncher,
+    /// The dashboard button (the Arch mark) was pressed.
+    ToggleDashboard,
     /// The theme button's gallery row was pressed.
     ToggleThemePicker,
     /// The panel picker button was pressed.
@@ -149,17 +149,19 @@ impl SimpleComponent for BarModel {
         root.set_anchor(Edge::Right, true);
         root.set_decorated(false);
 
-        // The launcher, wallpaper carousel and panel picker all live in the
-        // shell, so the bar just reports their clicks. The launcher wears the
-        // Arch mark with no chip behind it, so the corner of the bar reads as
-        // a bare logo instead of an app-grid glyph on a box.
-        let launcher_button = gtk::Button::new();
-        launcher_button.set_css_classes(&["mango-launcher-button"]);
-        launcher_button.set_tooltip_text(Some("Applications"));
-        launcher_button.set_child(Some(&arch_logo()));
+        // The dashboard, wallpaper carousel and panel picker all live in the
+        // shell, so the bar just reports their clicks. The dashboard button
+        // wears the Arch mark with no chip behind it, so the corner of the bar
+        // reads as a bare logo instead of an app-grid glyph on a box — and
+        // like the mark itself, it now leads somewhere bigger than one app
+        // grid: the dashboard panel (see `dashboard.rs`).
+        let dashboard_button = gtk::Button::new();
+        dashboard_button.set_css_classes(&["mango-dashboard-button"]);
+        dashboard_button.set_tooltip_text(Some("Dashboard"));
+        dashboard_button.set_child(Some(&arch_logo(ARCH_LOGO_SIZE)));
         let click_sender = sender.clone();
-        launcher_button.connect_clicked(move |_| {
-            let _ = click_sender.output(BarOutput::ToggleLauncher);
+        dashboard_button.connect_clicked(move |_| {
+            let _ = click_sender.output(BarOutput::ToggleDashboard);
         });
 
         let panels_button = gtk::Button::new();
@@ -233,9 +235,9 @@ impl SimpleComponent for BarModel {
         // rest. ----------------------------------------------------------
 
         // --- Build the requested layout ------------------------------
-        // Left: app launcher, theme, panel button, music player, cava
+        // Left: dashboard, theme, panel button, music player, cava
         let left = horizontal_cluster(&[], 6, gtk::Align::Start);
-        left.append(&launcher_button);
+        left.append(&dashboard_button);
         left.append(theme_button.widget());
         left.append(&panels_button);
         left.append(&overview_button);
@@ -341,22 +343,47 @@ fn horizontal_cluster(classes: &[&str], spacing: i32, halign: gtk::Align) -> gtk
     cluster
 }
 
-/// Edge of the launcher's Arch mark, in pixels.
+/// Edge of the dashboard button's Arch mark, in pixels.
 const ARCH_LOGO_SIZE: i32 = 18;
 
-/// The Arch Linux mark for the launcher button.
+/// The Arch Linux mark, scaled so its longest edge is `size` pixels.
 ///
 /// The image is embedded under `assets/` rather than read from
-/// `/usr/share/pixmaps`, so the launcher looks the same on any host and does
-/// not depend on the distro's artwork package being installed.
-fn arch_logo() -> gtk::Image {
+/// `/usr/share/pixmaps`, so the shell looks the same on any host and does
+/// not depend on the distro's artwork package being installed. The scale is
+/// done here rather than with `set_pixel_size` because that only resizes
+/// icon-name images — a pixbuf keeps whatever size it was decoded at, which
+/// would leave the dashboard's big tile mark at the PNG's natural size.
+pub fn arch_logo(size: i32) -> gtk::Image {
     const PNG: &[u8] = include_bytes!("../assets/archlinux-logo.png");
     let image = match gtk::gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(PNG)) {
-        Ok(pixbuf) => gtk::Image::from_pixbuf(Some(&pixbuf)),
+        Ok(pixbuf) => {
+            let (width, height) = (pixbuf.width(), pixbuf.height());
+            // Ceiling division by hand: `i32::div_ceil` is still unstable.
+            let (target_width, target_height) = if width >= height {
+                let divisor = width.max(1);
+                (size, (size * height + divisor - 1) / divisor)
+            } else {
+                let divisor = height.max(1);
+                ((size * width + divisor - 1) / divisor, size)
+            };
+            let scaled = if (width, height) == (target_width, target_height) {
+                pixbuf
+            } else {
+                pixbuf
+                    .scale_simple(
+                        target_width,
+                        target_height.max(1),
+                        gtk::gdk_pixbuf::InterpType::Bilinear,
+                    )
+                    .unwrap_or_else(|| pixbuf.clone())
+            };
+            gtk::Image::from_pixbuf(Some(&scaled))
+        }
         // A damaged asset must not take the whole bar down.
         Err(_) => gtk::Image::from_icon_name("view-app-grid-symbolic"),
     };
-    image.set_pixel_size(ARCH_LOGO_SIZE);
+    image.set_pixel_size(size);
     image
 }
 

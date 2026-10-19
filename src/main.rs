@@ -12,6 +12,8 @@
 //!   +-- WallpaperModel       (wallpaper.rs) one background surface per monitor
 //!   +-- LauncherModel        (launcher.rs)  app launcher, hopped out of the bar
 //!   |         + flyout.rs                   with a slide-down panel (SIGUSR1)
+//!   +-- DashboardModel       (dashboard.rs) the front door behind the bar's
+//!   |         + flyout.rs                   Arch mark: launcher + settings tiles
 //!   +-- CarouselModel        (carousel.rs)  fullscreen skewed wallpaper
 //!   |                                      carousel (SIGUSR2), ported from
 //!   |                                      DankMaterialShell's wallpaperCarousel
@@ -33,6 +35,7 @@
 mod anim;
 mod bar;
 mod carousel;
+mod dashboard;
 mod flyout;
 mod launcher;
 mod mango;
@@ -48,6 +51,7 @@ use std::path::PathBuf;
 
 use bar::{BarInit, BarInput, BarModel, BarOutput};
 use carousel::{CarouselInput, CarouselModel, CarouselOutput};
+use dashboard::{DashboardInput, DashboardModel, DashboardOutput};
 use gtk::gdk;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
@@ -62,12 +66,15 @@ use wallpaper::{WallpaperInit, WallpaperInput, WallpaperModel};
 use mango::{ClientView, MonitorView};
 
 /// The shell owns one bar and one wallpaper surface per monitor, the app
-/// launcher, the wallpaper carousel, the theme gallery, the workspace
-/// overview, and coordinates the IPC feed.
+/// launcher, the dashboard in front of it, the wallpaper carousel, the theme
+/// gallery, the workspace overview, and coordinates the IPC feed.
 struct Shell {
     bars: HashMap<String, Controller<BarModel>>,
     wallpapers: HashMap<String, Controller<WallpaperModel>>,
     launcher: Controller<LauncherModel>,
+    /// The front-door panel behind the bar's Arch mark: the launcher's and
+    /// the settings app's entries point.
+    dashboard: Controller<DashboardModel>,
     /// The fullscreen skewed wallpaper carousel.
     carousel: Controller<CarouselModel>,
     /// The gallery you can open from the bar's theme menu.
@@ -108,6 +115,10 @@ enum ShellInput {
     ClientsUpdate(Vec<ClientView>),
     /// Show/hide the application launcher (sent on `SIGUSR1`).
     ToggleLauncher,
+    /// Show/hide the dashboard, the panel behind the bar's Arch mark.
+    ToggleDashboard,
+    /// The dashboard's Settings tile was pressed.
+    OpenSettings,
     /// Show/hide the wallpaper carousel (sent on `SIGUSR2` or the bar button).
     ToggleWallpaper,
     /// Show/hide the theme gallery (sent by the theme menu in the bar).
@@ -183,6 +194,15 @@ impl SimpleComponent for Shell {
         // monitor; the launcher flies out from under the bar and both stay
         // hidden until their toggle arrives.
         let launcher = LauncherModel::builder().launch(current.clone()).detach();
+        // The dashboard is the front door the bar's Arch mark opens: a small
+        // fly-out with the tiles that lead to the launcher and (once it is
+        // built) the settings app.
+        let dashboard = DashboardModel::builder()
+            .launch(current.clone())
+            .forward(sender.input_sender(), |output| match output {
+                DashboardOutput::OpenLauncher => ShellInput::ToggleLauncher,
+                DashboardOutput::OpenSettings => ShellInput::OpenSettings,
+            });
         let carousel = CarouselModel::builder()
             .launch(current.clone())
             .forward(sender.input_sender(), |output| match output {
@@ -220,6 +240,7 @@ impl SimpleComponent for Shell {
             bars: HashMap::new(),
             wallpapers: HashMap::new(),
             launcher,
+            dashboard,
             carousel,
             theme_picker,
             panel_picker,
@@ -272,7 +293,7 @@ impl SimpleComponent for Shell {
                     // The bar's buttons toggle the shell's overlays, and its
                     // theme menu applies themes.
                     .forward(sender.input_sender(), |output| match output {
-                        BarOutput::ToggleLauncher => ShellInput::ToggleLauncher,
+                        BarOutput::ToggleDashboard => ShellInput::ToggleDashboard,
                         BarOutput::ToggleThemePicker => ShellInput::ToggleTheme,
                         BarOutput::TogglePanelPicker => ShellInput::TogglePanel,
                         BarOutput::ToggleShortcuts => ShellInput::ToggleShortcuts,
@@ -336,7 +357,27 @@ impl SimpleComponent for Shell {
                 }
             }
 
-            ShellInput::ToggleLauncher => self.launcher.emit(LauncherInput::Toggle),
+            ShellInput::ToggleLauncher => {
+                // The launcher and the dashboard are fly-outs from the same
+                // corner of the bar, so they swap rather than stack: opening
+                // one closes the other. (`SIGUSR1` reaches the launcher the
+                // same way the dashboard's Applications tile does.)
+                self.dashboard.emit(DashboardInput::Hide);
+                self.launcher.emit(LauncherInput::Toggle);
+            }
+
+            ShellInput::ToggleDashboard => {
+                self.launcher.emit(LauncherInput::Hide);
+                self.dashboard.emit(DashboardInput::Toggle);
+            }
+
+            ShellInput::OpenSettings => {
+                // The settings app grows out of this dashboard on the
+                // `settings` branch; until it exists there is nothing to
+                // open, so the tile just closes the panel again.
+                self.dashboard.emit(DashboardInput::Hide);
+                eprintln!("mango-shell: settings app is not built yet");
+            }
 
             ShellInput::ToggleWallpaper => self.carousel.emit(CarouselInput::Toggle),
 
@@ -416,6 +457,8 @@ impl SimpleComponent for Shell {
                     .emit(CarouselInput::SetCurrent(path.clone()));
                 self.launcher
                     .emit(LauncherInput::Banner(Some(path.clone())));
+                self.dashboard
+                    .emit(DashboardInput::Banner(Some(path.clone())));
                 self.theme_picker
                     .emit(ThemePickerInput::Banner(Some(path.clone())));
                 self.shortcuts
@@ -551,14 +594,15 @@ fn find_monitor(name: &str) -> Option<gdk::Monitor> {
     None
 }
 
-/// Keep the fly-out surfaces (launcher, theme and panel galleries, shortcut
-/// reference) hanging just below the active panel's bar. Each panel has its
-/// own height and may float, so the gap must follow it when the panel changes.
-/// The wallpaper carousel is fullscreen and needs no gap.
+/// Keep the fly-out surfaces (launcher, dashboard, theme and panel galleries,
+/// shortcut reference) hanging just below the active panel's bar. Each panel
+/// has its own height and may float, so the gap must follow it when the panel
+/// changes. The wallpaper carousel is fullscreen and needs no gap.
 fn set_flyout_gap(shell: &Shell, panel: &panel::Panel) {
     let gap = panel.flyout_gap();
     for window in [
         shell.launcher.widget(),
+        shell.dashboard.widget(),
         shell.theme_picker.widget(),
         shell.panel_picker.widget(),
         shell.shortcuts.widget(),
